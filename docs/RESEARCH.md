@@ -37,8 +37,18 @@ hay que permitir estos dominios:
 
 Ver https://code.claude.com/docs/en/claude-code-on-the-web
 
+## Reglas documentadas
+
+Ver el README: pulsador, aciertos, penalizaciones, tarareo, rebote con fragmento
+más largo y bloqueo del que falló. Las decisiones de producto que quedaron fijas:
+
+- Juego presencial. Un juez con Spotify Premium, jugadores con celu o modo mesa.
+- El juez puede ser iPhone, Android o notebook: SDK donde se puede, Connect donde no.
+- Extras de la primera versión: pantalla de TV, historial con estadísticas, sonidos.
+- No se pidió cuenta regresiva para responder; el juez marca "en blanco" a mano.
+
 ## Estado
 
-- [ ] Extraer mecánicas de los videos
-- [ ] Documentar reglas del juego
-- [ ] Diseñar la PWA
+- [x] Documentar reglas del juego
+- [x] Diseñar y construir la PWA (`src/`)
+- [ ] Extraer detalles finos de la UI de los videos (pendiente de acceso a YouTube)

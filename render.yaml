@@ -1,0 +1,8 @@
+# Deploy en Render (https://render.com): "New +" → "Blueprint" apuntando a este repo.
+services:
+  - type: web
+    name: en1nota
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    autoDeploy: true

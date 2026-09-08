@@ -1,0 +1,37 @@
+{
+  "name": "en1nota",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Juego presencial de reconocer canciones en una nota. PWA con juez, pulsadores en celulares y pantalla de TV.",
+  "scripts": {
+    "dev": "concurrently -k -n web,ws \"vite\" \"node server/index.js\"",
+    "build": "tsc --noEmit && vite build",
+    "start": "node server/index.js",
+    "test": "node --test \"test/**/*.test.{ts,js}\"",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "npm run build && (PORT=8791 node server/index.js & SRV=$!; sleep 1; node test/e2e/flow.mjs; R=$?; kill $SRV; exit $R)"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^10.0.5",
+    "playwright": "^1.56.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vite-plugin-pwa": "^1.3.0"
+  }
+}
