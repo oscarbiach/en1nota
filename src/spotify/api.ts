@@ -26,6 +26,8 @@ export async function api<T = unknown>(path: string, init: RequestInit = {}, ret
       const j = await res.json();
       msg = j?.error?.message ?? msg;
     } catch { /* sin cuerpo */ }
+    if (res.status === 401) msg = 'La sesión de Spotify venció. Salí y volvé a conectar.';
+    if (res.status === 429) msg = 'Spotify pide esperar un momento (demasiadas consultas).';
     throw new SpotifyError(res.status, msg);
   }
   if (res.status === 204 || res.headers.get('content-length') === '0') return undefined as T;
@@ -66,8 +68,24 @@ export interface Me {
 
 export const getMe = () => api<Me>('/me');
 
-export async function searchTracks(q: string, limit = 12): Promise<Track[]> {
-  const j = await api<{ tracks: { items: ApiTrack[] } }>(`/search?${new URLSearchParams({ q, type: 'track', limit: String(limit) })}`);
+const isInvalidLimit = (e: unknown) => e instanceof SpotifyError && e.status === 400 && /limit/i.test(e.message);
+
+/** Spotify cambia los topes de `limit` para apps nuevas: si rechaza el nuestro, reintenta sin mandarlo. */
+async function withLimitFallback<T>(build: (limit?: number) => string, limit: number): Promise<T> {
+  try {
+    return await api<T>(build(limit));
+  } catch (e) {
+    if (!isInvalidLimit(e)) throw e;
+    return api<T>(build(undefined));
+  }
+}
+
+export async function searchTracks(q: string, limit = 10): Promise<Track[]> {
+  const j = await withLimitFallback<{ tracks: { items: ApiTrack[] } }>((l) => {
+    const p = new URLSearchParams({ q, type: 'track' });
+    if (l) p.set('limit', String(l));
+    return `/search?${p}`;
+  }, limit);
   return j.tracks.items.filter((t) => !t.is_local).map(toTrack);
 }
 
@@ -97,13 +115,24 @@ export function parsePlaylistId(input: string): string | null {
   return null;
 }
 
+const PLAYLIST_FIELDS = 'next,items(track(id,uri,name,duration_ms,is_local,artists(name),album(name,images)))';
+
 export async function playlistTracks(playlistId: string): Promise<Track[]> {
   const out: Track[] = [];
-  let url: string | null = `/playlists/${playlistId}/tracks?limit=100&fields=next,items(track(id,uri,name,duration_ms,is_local,artists(name),album(name,images)))`;
-  while (url) {
-    const j: { items: Array<{ track: ApiTrack | null }>; next: string | null } = await api(url);
+  type Page = { items: Array<{ track: ApiTrack | null }>; next: string | null };
+  let j: Page;
+  try {
+    j = await withLimitFallback<Page>((l) => `/playlists/${playlistId}/tracks?fields=${PLAYLIST_FIELDS}${l ? `&limit=${l}` : ''}`, 50);
+  } catch (e) {
+    if (e instanceof SpotifyError && (e.status === 403 || e.status === 404)) {
+      throw new Error('Spotify no deja leer esta playlist desde apps nuevas: pasa con las playlists oficiales de Spotify (las que arma Spotify, no un usuario). Creá una playlist tuya, copiale los temas y pegá ese link. Las tuyas y las de otros usuarios sí funcionan.');
+    }
+    throw e;
+  }
+  for (;;) {
     for (const it of j.items) if (it.track && it.track.id && !it.track.is_local) out.push(toTrack(it.track));
-    url = j.next;
+    if (!j.next) break;
+    j = await api<Page>(j.next);
   }
   return out;
 }
