@@ -115,35 +115,50 @@ export function parsePlaylistId(input: string): string | null {
   return null;
 }
 
-const PLAYLIST_FIELDS = 'next,items(track(id,uri,name,duration_ms,is_local,artists(name),album(name,images)))';
+const TRACK_FIELDS = 'id,uri,name,duration_ms,is_local,artists(name),album(name,images)';
 
 /** Los códigos que empiezan así son playlists armadas por Spotify (editoriales o algorítmicas). */
 export const isSpotifyOwnedPlaylist = (id: string) => /^37i9dQZ/.test(id);
 
+type ItemsPage = { items: Array<{ item?: ApiTrack | null; track?: ApiTrack | null }>; next: string | null };
+
+/**
+ * Desde la migración de febrero 2026 las apps en modo desarrollo usan
+ * /playlists/{id}/items (antes /tracks) y solo pueden leer playlists creadas
+ * por el mismo usuario o donde colabora. Probamos el endpoint nuevo y, si el
+ * servidor todavía es viejo, el anterior.
+ */
 export async function playlistTracks(playlistId: string): Promise<Track[]> {
   const out: Track[] = [];
-  type Page = { items: Array<{ track: ApiTrack | null }>; next: string | null };
-  let j: Page;
-  try {
-    j = await withLimitFallback<Page>((l) => `/playlists/${playlistId}/tracks?fields=${PLAYLIST_FIELDS}${l ? `&limit=${l}` : ''}`, 50);
-  } catch (e) {
-    if (!(e instanceof SpotifyError) || (e.status !== 403 && e.status !== 404)) throw e;
-    // Segundo camino: el endpoint de la playlist entera, que devuelve la primera página adentro.
+  const attempts: Array<(limit?: number) => string> = [
+    (l) => `/playlists/${playlistId}/items?fields=next,items(item(${TRACK_FIELDS}))${l ? `&limit=${l}` : ''}`,
+    (l) => `/playlists/${playlistId}/items${l ? `?limit=${l}` : ''}`,
+    (l) => `/playlists/${playlistId}/tracks?fields=next,items(track(${TRACK_FIELDS}))${l ? `&limit=${l}` : ''}`
+  ];
+  let page: ItemsPage | undefined;
+  let lastStatus = 0;
+  for (const build of attempts) {
     try {
-      const full = await api<{ tracks: Page }>(`/playlists/${playlistId}?fields=tracks(${PLAYLIST_FIELDS})`);
-      j = full.tracks;
-    } catch (e2) {
-      const status = e2 instanceof SpotifyError ? e2.status : e.status;
-      if (isSpotifyOwnedPlaylist(playlistId)) {
-        throw new Error(`Esta es una playlist armada por Spotify (su código empieza con 37i9dQZ) y Spotify no deja leerlas desde apps nuevas. Creá una playlist tuya, agregale estos temas y pegá ese link.`);
-      }
-      throw new Error(`Spotify respondió ${status} al leer la playlist ${playlistId}. Si es tuya, probá con "Ver mis playlists". Si es de otra persona, tiene que ser pública.`);
+      page = await withLimitFallback<ItemsPage>(build, 50);
+      break;
+    } catch (e) {
+      if (!(e instanceof SpotifyError) || ![400, 403, 404].includes(e.status)) throw e;
+      lastStatus = e.status;
     }
   }
+  if (!page) {
+    if (isSpotifyOwnedPlaylist(playlistId)) {
+      throw new Error('Esta es una playlist armada por Spotify (su código empieza con 37i9dQZ). Spotify no deja leerlas desde apps nuevas: creá una playlist tuya, agregale estos temas y pegá ese link.');
+    }
+    throw new Error(`Spotify respondió ${lastStatus} al leer la playlist ${playlistId}. Desde 2026 las apps nuevas solo pueden leer playlists creadas por vos (o donde sos colaborador). Usá "Ver mis playlists".`);
+  }
   for (;;) {
-    for (const it of j.items) if (it.track && it.track.id && !it.track.is_local) out.push(toTrack(it.track));
-    if (!j.next) break;
-    j = await api<Page>(j.next);
+    for (const it of page.items) {
+      const t = it.item ?? it.track;
+      if (t && t.id && !t.is_local) out.push(toTrack(t));
+    }
+    if (!page.next) break;
+    page = await api<ItemsPage>(page.next);
   }
   return out;
 }

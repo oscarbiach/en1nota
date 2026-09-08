@@ -90,7 +90,7 @@ export function PlaylistEditor({ ctx, tracks, setTracks }: { ctx: HostCtx; track
 
         <div className="card">
           <h2>Importar playlist de Spotify</h2>
-          <p className="muted small">Sirven las playlists creadas por vos o por otros usuarios. Las oficiales de Spotify no se pueden leer desde apps nuevas: copiá sus temas a una lista tuya.</p>
+          <p className="muted small">Desde 2026 Spotify solo deja que apps nuevas lean playlists creadas por vos (o donde colaborás). Para usar una oficial o de otra persona, copiá sus temas a una playlist tuya.</p>
           <div className="row">
             <input value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="Pegá el link de una playlist" className="grow" disabled={!ctx.loggedIn} />
             <button className="btn" disabled={busy || !parsePlaylistId(importUrl)} onClick={() => importPlaylist(parsePlaylistId(importUrl)!)}>Importar</button>
