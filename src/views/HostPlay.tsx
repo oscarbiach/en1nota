@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { HostCtx } from './Host';
 import * as E from '../game/engine';
 import { Scoreboard } from '../components/Scoreboard';
+import { ConnectPlayer, ManualPlayer, SdkPlayer, sdkSupported } from '../spotify/player';
+import { savePlayerMode, type PlayerModeSetting } from '../storage/store';
 import { secs, mmss } from '../util/format';
 import { navigate } from '../App';
 
@@ -24,7 +26,8 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
   };
 
   const play = () => guard(async () => {
-    if (!player?.ready) throw new Error('El reproductor no está activo. Volvé a la pestaña Spotify del lobby.');
+    if (!player) throw new Error('No hay reproductor configurado. Elegí uno en el panel "Reproductor" de la derecha.');
+    if (!player.ready) await player.init();
     update((g) => E.markPlaying(g));
     const idx = game.round.trackIndex;
     await player.playSnippet(track.uri, track.startMs, len);
@@ -188,6 +191,7 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
               <button className="btn sm ghost" onClick={() => { if (confirm('¿Terminar la partida ahora?')) { void player?.stop(); ctx.sfx('finish'); update(E.finishGame); } }}>Terminar partida</button>
             </div>
           </div>
+          <PlayerQuick ctx={ctx} />
           <div className="card soft">
             <h3>Próximos</h3>
             <ul className="list">
@@ -199,6 +203,50 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Reproductor dentro del juego: activar, cambiar de modo o pasar a música manual sin volver al lobby. */
+function PlayerQuick({ ctx }: { ctx: HostCtx }) {
+  const { player } = ctx;
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string>();
+  const [mode, setMode] = useState<PlayerModeSetting>(player ? ('manual' in player ? 'manual' : player.mode) : (sdkSupported() ? 'sdk' : 'connect'));
+
+  const activate = async () => {
+    setErr(undefined); setBusy(true);
+    try {
+      let p = player;
+      const current: PlayerModeSetting | undefined = player ? ('manual' in player ? 'manual' : player.mode) : undefined;
+      if (!p || current !== mode) {
+        if (mode === 'manual') p = new ManualPlayer();
+        else if (mode === 'sdk') p = new SdkPlayer();
+        else p = new ConnectPlayer();
+        p.onStatus = ctx.setPlayerStatus;
+        ctx.setPlayer(p);
+        savePlayerMode(mode);
+      }
+      if (!p.ready) await p.init();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="card soft">
+      <h3>Reproductor</h3>
+      <div className="muted small mb">{ctx.playerStatus}</div>
+      <div className="row">
+        <select value={mode} onChange={(e) => setMode(e.target.value as PlayerModeSetting)} className="grow">
+          {sdkSupported() && <option value="sdk">Suena en este navegador</option>}
+          <option value="connect">App de Spotify (Connect)</option>
+          <option value="manual">Música manual (sin Spotify)</option>
+        </select>
+        <button className="btn sm primary" disabled={busy || (mode !== 'manual' && !ctx.loggedIn)} onClick={activate}>{busy ? '…' : player?.ready ? 'Reactivar' : 'Activar'}</button>
+      </div>
+      {mode !== 'manual' && !ctx.loggedIn && <div className="error small mt">Sin sesión de Spotify. Terminá la partida y conectala en el lobby, o usá música manual.</div>}
+      {err && <div className="error small mt">{err}</div>}
     </div>
   );
 }

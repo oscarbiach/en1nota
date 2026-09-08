@@ -17,6 +17,20 @@ export function HostSetup({ ctx, setTracks, authError }: { ctx: HostCtx; setTrac
   const [tab, setTab] = useState<'spotify' | 'jugadores' | 'lista' | 'reglas'>(ctx.loggedIn ? 'jugadores' : 'spotify');
   const manual = ctx.player instanceof ManualPlayer;
   const ready = (ctx.loggedIn || manual) && game.tracks.length > 0 && game.players.length > 0;
+  const [startErr, setStartErr] = useState<string>();
+  const [starting, setStarting] = useState(false);
+  const start = async () => {
+    setStartErr(undefined); setStarting(true);
+    try {
+      // El reproductor necesita un gesto del usuario: este click sirve.
+      if (ctx.player && !ctx.player.ready) await ctx.player.init();
+      ctx.sfx('start');
+      update(E.startGame);
+    } catch (e) {
+      setStartErr(`No se pudo activar el reproductor: ${(e as Error).message}. Revisá la pestaña Spotify.`);
+      setTab('spotify');
+    } finally { setStarting(false); }
+  };
 
   return (
     <div className="page wide">
@@ -45,6 +59,7 @@ export function HostSetup({ ctx, setTracks, authError }: { ctx: HostCtx; setTrac
       {tab === 'lista' && <PlaylistEditor ctx={ctx} tracks={game.tracks} setTracks={setTracks} />}
       {tab === 'reglas' && <RulesTab settings={game.settings} onChange={(s) => { saveSettings(s); update((g) => ({ ...g, settings: s })); }} />}
 
+      {startErr && <div className="error mt">{startErr}</div>}
       <div className="card mt row between">
         <div className="muted small">
           {!ctx.loggedIn && !manual ? 'Falta conectar Spotify (o elegí "sin reproductor"). ' : ''}
@@ -52,7 +67,7 @@ export function HostSetup({ ctx, setTracks, authError }: { ctx: HostCtx; setTrac
           {game.tracks.length === 0 ? 'Falta cargar canciones. ' : ''}
           {ready ? `${game.players.length} jugadores · ${game.tracks.length} temas · fragmentos ${game.settings.steps.map(secs).join(' → ')}` : ''}
         </div>
-        <button className="btn primary xl" disabled={!ready} onClick={() => { ctx.sfx('start'); update(E.startGame); }}>¡Empezar!</button>
+        <button className="btn primary xl" disabled={!ready || starting} onClick={start}>{starting ? 'Activando reproductor…' : '¡Empezar!'}</button>
       </div>
     </div>
   );
