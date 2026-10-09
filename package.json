@@ -10,7 +10,7 @@
     "start": "node server/index.js",
     "test": "node --test \"test/**/*.test.{ts,js}\"",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "npm run build && (PORT=8791 node server/index.js & SRV=$!; sleep 1; node test/e2e/flow.mjs; R=$?; kill $SRV; exit $R)"
+    "test:e2e": "npm run build && node test/e2e/run.mjs"
   },
   "engines": {
     "node": ">=20"

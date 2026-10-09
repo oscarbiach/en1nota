@@ -5,10 +5,16 @@
 //  - ConnectPlayer: manda play/pause por la Web API a otro dispositivo (la app
 //    de Spotify del iPhone, un parlante). La duración depende de la latencia
 //    de red: sirve para 500 ms o más, no para "una nota".
+//  - ManualPlayer (manual.ts): sin Spotify, sólo cuenta el tiempo.
+// Todos cumplen el contrato de run.ts: cada operación termina siempre, y una
+// nueva (o stop) cancela la anterior.
 import { getAccessToken } from './auth';
 import { devices, pauseRemote, playUri, transferTo, type Device } from './api';
+import { Runner, runSnippet, type SnippetResult } from './run';
 
-export type PlayerMode = 'sdk' | 'connect';
+export { ManualPlayer } from './manual';
+
+export type PlayerMode = 'sdk' | 'connect' | 'manual';
 
 export interface SnippetPlayer {
   readonly mode: PlayerMode;
@@ -16,8 +22,11 @@ export interface SnippetPlayer {
   readonly deviceId?: string;
   /** Hay que llamarlo desde un gesto del usuario (click/tap). */
   init(): Promise<void>;
-  /** Reproduce `lenMs` a partir de `startMs`. Resuelve cuando terminó. */
-  playSnippet(uri: string, startMs: number, lenMs: number): Promise<void>;
+  /**
+   * Reproduce `lenMs` a partir de `startMs`. Resuelve 'done' al terminar o
+   * 'cancelled' si llamaron stop() o empezó otro fragmento. Nunca queda colgada.
+   */
+  playSnippet(uri: string, startMs: number, lenMs: number): Promise<SnippetResult>;
   /** Reproduce sin tope hasta que llamen stop() o pase `maxMs`. */
   play(uri: string, startMs: number, maxMs?: number): Promise<void>;
   stop(): Promise<void>;
@@ -45,8 +54,6 @@ function loadSdk(): Promise<void> {
   return sdkLoading;
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 export class SdkPlayer implements SnippetPlayer {
   readonly mode = 'sdk';
   ready = false;
@@ -55,8 +62,7 @@ export class SdkPlayer implements SnippetPlayer {
   private player?: Spotify.Player;
   private state: Spotify.PlaybackState | null = null;
   private stateWaiters: Array<(s: Spotify.PlaybackState) => void> = [];
-  private stopTimer?: number;
-  private session = 0;
+  private runner = new Runner();
 
   async init() {
     if (this.ready) return;
@@ -109,40 +115,38 @@ export class SdkPlayer implements SnippetPlayer {
 
   async play(uri: string, startMs: number, maxMs?: number) {
     if (!this.ready || !this.player) throw new Error('Reproductor no inicializado');
-    const mine = ++this.session;
-    clearTimeout(this.stopTimer);
-    await playUri(this.deviceId, uri, startMs);
-    await this.waitPlaying(uri);
-    if (mine !== this.session) return;
-    if (maxMs) this.stopTimer = window.setTimeout(() => { if (mine === this.session) void this.stop(); }, maxMs);
+    const player = this.player;
+    const op = this.runner.begin();
+    await runSnippet(async () => {
+      await op.wait(playUri(this.deviceId, uri, startMs));
+      await op.wait(this.waitPlaying(uri));
+      if (!maxMs) return;
+      await op.sleep(maxMs);
+      await player.pause();
+    });
   }
 
-  async playSnippet(uri: string, startMs: number, lenMs: number) {
-    if (!this.ready || !this.player) throw new Error('Reproductor no inicializado');
-    const mine = ++this.session;
-    clearTimeout(this.stopTimer);
-    await playUri(this.deviceId, uri, startMs);
-    const s = await this.waitPlaying(uri);
-    if (mine !== this.session) return;
-    // Compensamos lo que ya avanzó entre que arrancó y nos enteramos.
-    const already = Math.max(0, s.position - startMs);
-    const wait = Math.max(0, lenMs - already);
-    await new Promise<void>((resolve) => {
-      this.stopTimer = window.setTimeout(resolve, wait);
+  playSnippet(uri: string, startMs: number, lenMs: number) {
+    if (!this.ready || !this.player) return Promise.reject(new Error('Reproductor no inicializado'));
+    const player = this.player;
+    const op = this.runner.begin();
+    return runSnippet(async () => {
+      await op.wait(playUri(this.deviceId, uri, startMs));
+      const s = await op.wait(this.waitPlaying(uri));
+      // Compensamos lo que ya avanzó entre que arrancó y nos enteramos.
+      const already = Math.max(0, s.position - startMs);
+      await op.sleep(Math.max(0, lenMs - already));
+      await player.pause();
     });
-    if (mine !== this.session) return;
-    await this.player.pause();
   }
 
   async stop() {
-    this.session++;
-    clearTimeout(this.stopTimer);
+    this.runner.cancel();
     try { await this.player?.pause(); } catch { /* ya pausado */ }
   }
 
   destroy() {
-    this.session++;
-    clearTimeout(this.stopTimer);
+    this.runner.cancel();
     this.player?.disconnect();
     this.ready = false;
   }
@@ -153,12 +157,13 @@ export class ConnectPlayer implements SnippetPlayer {
   ready = false;
   deviceId?: string;
   onStatus?: (s: string) => void;
-  private stopTimer?: number;
-  private session = 0;
+  private runner = new Runner();
   /** Latencia medida del comando play, para descontarla del pause. */
   private lastPlayLatency = 250;
+  private device?: Device;
 
-  constructor(private device?: Device) {
+  constructor(device?: Device) {
+    this.device = device;
     this.deviceId = device?.id;
   }
 
@@ -183,62 +188,34 @@ export class ConnectPlayer implements SnippetPlayer {
   }
 
   async play(uri: string, startMs: number, maxMs?: number) {
-    const mine = ++this.session;
-    clearTimeout(this.stopTimer);
-    await playUri(this.deviceId, uri, startMs);
-    if (maxMs) this.stopTimer = window.setTimeout(() => { if (mine === this.session) void this.stop(); }, maxMs);
+    const op = this.runner.begin();
+    await runSnippet(async () => {
+      await op.wait(playUri(this.deviceId, uri, startMs));
+      if (!maxMs) return;
+      await op.sleep(maxMs);
+      await pauseRemote(this.deviceId);
+    });
   }
 
-  async playSnippet(uri: string, startMs: number, lenMs: number) {
-    const mine = ++this.session;
-    clearTimeout(this.stopTimer);
-    const t0 = performance.now();
-    await playUri(this.deviceId, uri, startMs);
-    this.lastPlayLatency = performance.now() - t0;
-    if (mine !== this.session) return;
-    // Suponemos que el pause tarda parecido al play: lo mandamos antes.
-    const wait = Math.max(0, lenMs - this.lastPlayLatency * 0.5);
-    await sleep(wait);
-    if (mine !== this.session) return;
-    await pauseRemote(this.deviceId);
+  playSnippet(uri: string, startMs: number, lenMs: number) {
+    const op = this.runner.begin();
+    return runSnippet(async () => {
+      const t0 = performance.now();
+      await op.wait(playUri(this.deviceId, uri, startMs));
+      this.lastPlayLatency = performance.now() - t0;
+      // Suponemos que el pause tarda parecido al play: lo mandamos antes.
+      await op.sleep(Math.max(0, lenMs - this.lastPlayLatency * 0.5));
+      await pauseRemote(this.deviceId);
+    });
   }
 
   async stop() {
-    this.session++;
-    clearTimeout(this.stopTimer);
+    this.runner.cancel();
     await pauseRemote(this.deviceId);
   }
 
   destroy() {
-    this.session++;
-    clearTimeout(this.stopTimer);
+    this.runner.cancel();
     this.ready = false;
   }
-}
-
-/**
- * Sin Spotify: el juez pone la música por su cuenta (parlante, otra app).
- * La app solo cuenta el tiempo del fragmento para abrir los pulsadores y
- * llevar el puntaje. Sirve de respaldo si Spotify falla en plena juntada.
- */
-export class ManualPlayer implements SnippetPlayer {
-  readonly mode = 'connect';
-  ready = true;
-  deviceId = undefined;
-  onStatus?: (s: string) => void;
-  private timer?: number;
-  private session = 0;
-  readonly manual = true;
-
-  async init() {
-    this.onStatus?.('Sin reproductor: la música la ponés vos');
-  }
-  async playSnippet(_uri: string, _startMs: number, lenMs: number) {
-    const mine = ++this.session;
-    await new Promise<void>((r) => { this.timer = window.setTimeout(r, lenMs); });
-    if (mine !== this.session) return;
-  }
-  async play() { this.session++; clearTimeout(this.timer); }
-  async stop() { this.session++; clearTimeout(this.timer); }
-  destroy() { this.session++; clearTimeout(this.timer); }
 }

@@ -106,6 +106,23 @@ export function markPlaying(g: GameState, at = Date.now()): GameState {
   };
 }
 
+/**
+ * Partida leída de localStorage tras una recarga (o actualización de la PWA).
+ * Los timers de la página anterior ya no existen: nada está sonando y no hay
+ * ventana de empate abierta. Normaliza las fases transitorias a una fase
+ * segura sin tocar puntajes, bloqueos ni historial.
+ */
+export function restoreGame(g: GameState): GameState {
+  const round = { ...g.round, pending: [] };
+  if (g.phase === 'playing') {
+    return { ...g, phase: 'open', notice: 'Se interrumpió el fragmento: podés repetirlo.', round };
+  }
+  if (g.phase === 'buzzed' && !round.buzzedPlayerId) {
+    return { ...g, phase: 'open', round };
+  }
+  return { ...g, round };
+}
+
 /** El fragmento terminó de sonar: siguen abiertos los pulsadores. */
 export function markSnippetEnded(g: GameState): GameState {
   return g.phase === 'playing' ? { ...g, phase: 'open' } : g;

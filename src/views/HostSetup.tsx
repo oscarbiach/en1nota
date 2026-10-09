@@ -15,7 +15,7 @@ import { secs } from '../util/format';
 export function HostSetup({ ctx, setTracks, authError }: { ctx: HostCtx; setTracks: (t: Track[]) => void; authError?: string }) {
   const { game, update, room, online } = ctx;
   const [tab, setTab] = useState<'spotify' | 'jugadores' | 'lista' | 'reglas'>(ctx.loggedIn ? 'jugadores' : 'spotify');
-  const manual = ctx.player instanceof ManualPlayer;
+  const manual = ctx.player?.mode === 'manual';
   const ready = (ctx.loggedIn || manual) && game.tracks.length > 0 && game.players.length > 0;
   const [startErr, setStartErr] = useState<string>();
   const [starting, setStarting] = useState(false);

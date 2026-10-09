@@ -3,7 +3,7 @@ import type { HostCtx } from './Host';
 import * as E from '../game/engine';
 import { Scoreboard } from '../components/Scoreboard';
 import { ConnectPlayer, ManualPlayer, SdkPlayer, sdkSupported } from '../spotify/player';
-import { savePlayerMode, type PlayerModeSetting } from '../storage/store';
+import { loadPlayerMode, savePlayerMode, type PlayerModeSetting } from '../storage/store';
 import { secs, mmss } from '../util/format';
 import { navigate } from '../App';
 
@@ -17,22 +17,31 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
   const [peek, setPeek] = useState(false);
   const [mesa, setMesa] = useState(() => game.players.some((p) => !ctx.peers.has(p.id)));
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   const gameRef = useRef(game);
   gameRef.current = game;
 
   const guard = async (fn: () => Promise<void>) => {
-    setErr(undefined); setBusy(true);
-    try { await fn(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+    setErr(undefined); setBusy(true); busyRef.current = true;
+    try { await fn(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); busyRef.current = false; }
   };
 
-  const play = () => guard(async () => {
-    if (!player) throw new Error('No hay reproductor configurado. Elegí uno en el panel "Reproductor" de la derecha.');
-    if (!player.ready) await player.init();
-    update((g) => E.markPlaying(g));
-    const idx = game.round.trackIndex;
-    await player.playSnippet(track.uri, track.startMs, len);
-    update((g) => (g.round.trackIndex === idx ? E.markSnippetEnded(g) : g));
-  });
+  const play = () => {
+    if (busyRef.current) return; // la tecla espacio no pasa por el botón deshabilitado
+    return guard(async () => {
+      if (!player) throw new Error('No hay reproductor configurado. Elegí uno en el panel "Reproductor" de la derecha.');
+      if (!player.ready) await player.init();
+      const at = Date.now();
+      update((g) => E.markPlaying(g, at));
+      try {
+        await player.playSnippet(track.uri, track.startMs, len);
+      } finally {
+        // Terminó, se canceló o falló: esta pasada deja de "sonar" y se puede
+        // repetir. Si ya arrancó otra (o alguien tocó), no la tocamos.
+        update((g) => (g.round.playStartedAt === at ? E.markSnippetEnded(g) : g));
+      }
+    });
+  };
 
   const correct = () => {
     ctx.sfx('correct', floor?.id);
@@ -54,7 +63,10 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
     if (game.round.trackIndex + 1 >= game.tracks.length) ctx.sfx('finish');
   };
   const skip = () => { if (confirm('¿Saltar este tema sin puntos?')) { void player?.stop(); update((g) => E.skipTrack(g)); } };
-  const stopMusic = () => void player?.stop();
+  const stopMusic = () => {
+    void player?.stop();
+    update(E.markSnippetEnded); // "sonando" → pulsadores abiertos; sin efecto en otras fases
+  };
 
   // Teclas: 1-8 pulsadores (modo mesa), espacio = sonar, C/X/T = correcto/incorrecto/tarareo, N = siguiente.
   useEffect(() => {
@@ -98,7 +110,7 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
         </div>
         <div className="row">
           <span className={`pill ${online ? 'on' : 'off'}`}>{room ? `Sala ${room}` : 'sin sala'}</span>
-          <span className={`pill ${player?.ready ? 'on' : 'off'}`}>{player?.ready ? ('manual' in player ? 'Música manual' : player.mode === 'sdk' ? 'Suena acá' : 'Spotify Connect') : 'Sin reproductor'}</span>
+          <span className={`pill ${player?.ready ? 'on' : 'off'}`}>{player?.ready ? MODE_LABEL[player.mode] : 'Sin reproductor'}</span>
           <label className="row small" style={{ margin: 0 }}><input type="checkbox" checked={mesa} onChange={(e) => setMesa(e.target.checked)} />Modo mesa</label>
         </div>
       </div>
@@ -207,19 +219,28 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
   );
 }
 
+const MODE_LABEL: Record<PlayerModeSetting, string> = {
+  sdk: 'Suena acá',
+  connect: 'Spotify Connect',
+  manual: 'Música manual'
+};
+
 /** Reproductor dentro del juego: activar, cambiar de modo o pasar a música manual sin volver al lobby. */
 function PlayerQuick({ ctx }: { ctx: HostCtx }) {
   const { player } = ctx;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string>();
-  const [mode, setMode] = useState<PlayerModeSetting>(player ? ('manual' in player ? 'manual' : player.mode) : (sdkSupported() ? 'sdk' : 'connect'));
+  // `mode` es la selección pendiente; el modo activo es siempre `player.mode`.
+  // Al recargar, el reproductor real llega después del primer render: cuando
+  // llega (o cambia), la selección se alinea con él.
+  const [mode, setMode] = useState<PlayerModeSetting>(() => player?.mode ?? loadPlayerMode() ?? (sdkSupported() ? 'sdk' : 'connect'));
+  useEffect(() => { if (player) setMode(player.mode); }, [player]);
 
   const activate = async () => {
     setErr(undefined); setBusy(true);
     try {
       let p = player;
-      const current: PlayerModeSetting | undefined = player ? ('manual' in player ? 'manual' : player.mode) : undefined;
-      if (!p || current !== mode) {
+      if (!p || p.mode !== mode) {
         if (mode === 'manual') p = new ManualPlayer();
         else if (mode === 'sdk') p = new SdkPlayer();
         else p = new ConnectPlayer();
@@ -236,7 +257,9 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
   return (
     <div className="card soft">
       <h3>Reproductor</h3>
-      <div className="muted small mb">{ctx.playerStatus}</div>
+      <div className="muted small mb" data-testid="player-active">
+        Activo: <b>{player ? MODE_LABEL[player.mode] : 'ninguno'}</b> · {ctx.playerStatus}
+      </div>
       <div className="row">
         <select value={mode} onChange={(e) => setMode(e.target.value as PlayerModeSetting)} className="grow">
           {sdkSupported() && <option value="sdk">Suena en este navegador</option>}

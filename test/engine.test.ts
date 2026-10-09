@@ -104,3 +104,43 @@ test('termina al pasar el último tema y calcula estadísticas', () => {
   assert.equal(st.unsolved, 1);
   assert.ok(E.toPublic(g).awards?.some((a) => a.v === 'Ana'));
 });
+
+// ---------- Regresión A02: restaurar una partida guardada ----------
+
+/** Lleva una partida a cada fase con puntajes no triviales. */
+function inPhase(phase: 'ready' | 'playing' | 'open' | 'buzzed' | 'revealed') {
+  let g = E.markPlaying(setup(), 1000);
+  g = E.resolveBuzzes(E.receiveBuzz(g, { playerId: 'b', at: 1100 }));
+  g = E.judgeWrong(g); // Beto -1, bloqueado
+  if (phase === 'open') return g;
+  if (phase === 'playing') return E.markPlaying(E.receiveBuzz(g, { playerId: 'a', at: 1 }), 2000);
+  if (phase === 'buzzed') return E.resolveBuzzes(E.receiveBuzz(E.markPlaying(g), { playerId: 'a', at: 1 }));
+  if (phase === 'revealed') return E.reveal(g);
+  return E.nextTrack(E.reveal(g)); // ready, tema 2
+}
+
+for (const phase of ['ready', 'playing', 'open', 'buzzed', 'revealed'] as const) {
+  test(`A02: restaurar en "${phase}" conserva puntajes y deja la partida operable`, () => {
+    const saved = inPhase(phase);
+    assert.equal(saved.phase, phase);
+    const g = E.restoreGame(JSON.parse(JSON.stringify(saved)));
+    assert.deepEqual(g.players.map((p) => p.score), saved.players.map((p) => p.score));
+    assert.deepEqual(g.round.lockedPlayerIds, saved.round.lockedPlayerIds);
+    assert.equal(g.round.pending.length, 0, 'las pulsaciones en espera no sobreviven a la recarga');
+    assert.notEqual(g.phase, 'playing', 'nada está sonando después de recargar');
+    if (phase === 'playing') {
+      assert.equal(g.phase, 'open');
+      assert.match(g.notice ?? '', /interrumpió/);
+      // Se puede repetir el fragmento.
+      assert.equal(E.markPlaying(g).phase, 'playing');
+    } else {
+      assert.equal(g.phase, phase);
+    }
+    if (phase === 'buzzed') assert.equal(E.judgeCorrect(g).players[0].score, 1);
+  });
+}
+
+test('A02: "buzzed" sin jugador con la palabra vuelve a pulsadores abiertos', () => {
+  const g = E.restoreGame({ ...inPhase('buzzed'), round: { ...inPhase('buzzed').round, buzzedPlayerId: undefined } });
+  assert.equal(g.phase, 'open');
+});

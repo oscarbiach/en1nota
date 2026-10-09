@@ -36,7 +36,7 @@ export interface HostCtx {
 export function Host({ authError }: { authError?: string }) {
   const [game, setGame] = useState<GameState>(() => {
     const saved = loadGame();
-    if (saved) return saved;
+    if (saved) return E.restoreGame(saved);
     return E.newGame({ settings: { ...E.newGame().settings, ...loadSettings() } });
   });
   const gameRef = useRef(game);

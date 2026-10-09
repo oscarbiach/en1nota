@@ -1,8 +1,7 @@
-import { chromium } from 'playwright';
-const BASE = process.env.BASE ?? 'http://127.0.0.1:8791';
 import { mkdirSync } from 'node:fs';
+import { BASE, launch } from './helpers.mjs';
 mkdirSync('test/e2e/out', { recursive: true });
-const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+const browser = await launch();
 const log = (...a) => console.log('[e2e]', ...a);
 try {
   // ---- juez ----
