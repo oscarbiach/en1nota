@@ -70,19 +70,64 @@ Dónde suena la música:
 ```bash
 npm install
 npm run dev        # PWA en http://127.0.0.1:5173 + servidor de salas en :8787
-npm test           # motor de reglas y servidor
+npm test           # motor, servidor, red y reproductores (sin navegador)
+npm run test:e2e   # compila y juega partidas reales en Chromium (ver abajo)
 npm run build      # typecheck + dist/
 npm start          # sirve dist/ y /ws en :8787
 ```
 
+`npm run test:e2e` funciona igual en Windows, macOS y Linux: `test/e2e/run.mjs`
+levanta el servidor en el puerto 8791, corre la partida completa
+(`flow.mjs`) y las regresiones de la auditoría (`regressions.test.mjs`) con
+juez, celulares y TV en contextos separados, y apaga el servidor. Usa el
+Chromium de Playwright (`npx playwright install chromium` la primera vez);
+para usar el navegador instalado: `PW_CHANNEL=msedge` o `PW_CHANNEL=chrome`,
+o `PW_EXECUTABLE=/ruta/al/binario`. Todas las pruebas usan **música manual**:
+ninguna toca Spotify real.
+
 Estructura:
 
 - `src/game/` motor de reglas puro (`engine.ts`) y tipos. Sin red ni audio.
-- `src/spotify/` login PKCE, cliente de la Web API y reproductores de fragmentos.
-- `src/net/` sala por WebSocket, reloj sincronizado, protocolo juez ↔ jugadores.
+- `src/spotify/` login PKCE, cliente de la Web API y reproductores de fragmentos
+  (`run.ts`: contrato de cancelación común a todos).
+- `src/net/` sala por WebSocket, reloj sincronizado, protocolo juez ↔ jugadores
+  y validación de mensajes (`validate.ts`).
 - `src/views/` juez (lobby, lista, panel de juego), jugador, TV, historial.
 - `src/audio/sfx.ts` efectos sintetizados con Web Audio (sin archivos).
-- `server/index.js` relay de salas. No conoce las reglas.
+- `server/index.js` relay de salas. No conoce las reglas; valida cada mensaje
+  (`server/validate.js`) y revoca conexiones reemplazadas.
+
+## Decisiones de producto provisorias
+
+Quedaron implementadas así para que juez, TV e historial sean coherentes, pero
+son reglas de juego a confirmar:
+
+- **Desempate.** Gana quien tiene más puntos; a igual puntaje, más aciertos. Si
+  siguen iguales, **comparten el puesto** (1, 1, 3) y todos son ganadores
+  ("🤝 Empate: …"); en el historial cada uno suma una partida ganada. No se
+  desempata por nombre ni por orden. Alternativas posibles: ronda de
+  desempate, o desempatar por menos fallos o por reflejo más rápido.
+- **Ganador con puntaje cero o negativo.** Igual se corona al primero (o a
+  los empatados en el primer puesto), también en el historial.
+- **"Empezar de cero".** Misma sala: se borran lista y puntajes, se quitan los
+  jugadores de modo mesa, y los celulares conectados se reincorporan solos.
+  Alternativa: cerrar la sala y abrir otra con código nuevo.
+- **Terminar antes.** El tema en curso cuenta si llegó a sonar: entra al
+  historial como "sin terminar" y sus fallos cuentan; un tema que no sonó
+  no se registra.
+
+## Rama del proyecto
+
+La aplicación vive en la rama `claude/music-recognition-game-5vz0p8`, que es
+la que despliega Render. La rama predeterminada del repositorio,
+`claude/mobile-streamer-game-ui03ko`, sólo tiene la investigación inicial: una
+clonación normal no trae la app. Para ordenarlo (lo decide el dueño del repo):
+
+1. Crear `main` desde `claude/music-recognition-game-5vz0p8`.
+2. En GitHub, *Settings → General → Default branch*: elegir `main`.
+3. En Render, *Settings → Build & Deploy → Branch*: elegir `main`.
+
+Hasta entonces, indicar siempre esta rama al trabajar sobre el código.
 
 ## Deploy
 
