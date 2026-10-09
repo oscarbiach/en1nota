@@ -125,11 +125,12 @@ test('A11: tras recargar en música manual, selector, etiqueta y botones coincid
   await page.reload();
   await page.locator('.stage').waitFor();
   await page.getByText('Música manual', { exact: true }).first().waitFor();
-  const active = await page.getByTestId('player-active').textContent();
-  assert.match(active, /Activo: Música manual/);
+  // Primero el síntoma de la auditoría: selector y error de sesión.
   const select = page.locator('.card.soft select');
   await until(async () => (await select.inputValue()) === 'manual', 'el selector muestra música manual');
   assert.equal(await page.getByText('Sin sesión de Spotify').count(), 0, 'sin error de sesión');
+  const active = await page.getByTestId('player-active').textContent();
+  assert.match(active, /Activo: Música manual/);
   assert.ok(await page.getByRole('button', { name: /Reactivar|Activar/ }).isEnabled());
   assert.ok(await sonar(page).isEnabled());
   await ctx.close();
@@ -147,6 +148,9 @@ test('A06: terminar tras acertar el tema 1 de 2 conserva acierto, tema e histori
   await page.getByText('¡Ana acertó! +1').waitFor();
   await page.getByRole('button', { name: 'Terminar partida' }).click();
   await page.getByText('Fin de la partida').waitFor();
+  // Primero el síntoma de la auditoría: la ronda actual entra al historial.
+  assert.equal((await gameState(page)).history.length, 1, 'el tema jugado queda registrado');
+  await page.getByText('de 1 temas').waitFor({ timeout: 2000 });
   const ana = page.getByTestId('podium-entry').filter({ hasText: 'Ana' });
   await ana.getByText('1 aciertos').waitFor();
   await page.getByText('de 1 temas').waitFor();
@@ -202,8 +206,11 @@ test('A07: en modo mesa no se leen los próximos temas hasta que el juez los pid
   await addTablePlayers(j.page, ['Ana', 'Beto']);
   await addTracks(j.page, ['Tema Uno', 'Tema Dos', 'Tema Tres']);
   await start(j.page);
-  const upcoming = j.page.getByTestId('upcoming');
   assert.ok(await j.page.getByLabel('Modo mesa').isChecked(), 'modo mesa activo con jugadores de mesa');
+  // Primero el síntoma de la auditoría: ningún título futuro en la página.
+  const page = await j.page.locator('#root').innerHTML();
+  for (const t of ['Tema Dos', 'Tema Tres']) assert.ok(!page.includes(t), `"${t}" no debe estar en la página`);
+  const upcoming = j.page.getByTestId('upcoming');
   const hidden = await upcoming.innerHTML();
   for (const t of ['Tema Dos', 'Tema Tres', 'Artista de']) assert.ok(!hidden.includes(t), `"${t}" no debe estar ni en el DOM`);
   assert.equal(await upcoming.getByText('Tema oculto').count(), 2);
