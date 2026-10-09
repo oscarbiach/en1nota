@@ -29,6 +29,8 @@ export interface HostCtx {
   sfx: (name: SfxName, playerId?: string) => void;
   /** Pulsación (de celu o de pantalla), con instante en reloj del servidor. */
   buzz: (pid: string, at: number) => void;
+  /** Saca a un jugador: de la partida y de la sala. */
+  kick: (pid: string) => void;
   loggedIn: boolean;
   setLoggedIn: (v: boolean) => void;
 }
@@ -150,9 +152,37 @@ export function Host({ authError }: { authError?: string }) {
 
   useEffect(() => () => { player?.destroy(); }, [player]);
 
+  const peersRef = useRef(peers);
+  peersRef.current = peers;
+
+  const kick = useCallback((pid: string) => {
+    // El servidor no avisa la desconexión de un expulsado: lo olvidamos acá
+    // para que nunca vuelva a figurar como conectado.
+    if (peersRef.current.has(pid)) conn.kick(pid);
+    setPeers((m) => { const n = new Map(m); n.delete(pid); return n; });
+    setGame((g) => E.removePlayer(g, pid));
+  }, [conn]);
+
+  /**
+   * "Empezar de cero": lista y puntajes nuevos en la misma sala. Los
+   * jugadores de modo mesa se quitan; los celulares conectados se
+   * reincorporan con su nombre y reciben su color, así ninguno queda
+   * esperando algo que el juez no puede hacer.
+   */
+  const startFromScratch = () => {
+    const prev = gameRef.current;
+    const phones = [...peersRef.current.values()].filter((p) => p.role === 'player' && p.connected);
+    let next = E.newGame({ settings: prev.settings });
+    for (const p of phones.slice(0, 8)) {
+      next = E.addPlayer(next, prev.players.find((x) => x.id === p.pid)?.name ?? p.name, p.pid);
+    }
+    setGame(next);
+    for (const p of next.players) conn.sendTo(p.id, { k: 'welcome', playerId: p.id, name: p.name, color: p.color });
+  };
+
   const ctx: HostCtx = {
     game, update, room, online, peers, conn, player, playerStatus, setPlayer, setPlayerStatus,
-    localSfx, setLocalSfx, sfx: emitSfx, buzz: onBuzz, loggedIn, setLoggedIn
+    localSfx, setLocalSfx, sfx: emitSfx, buzz: onBuzz, kick, loggedIn, setLoggedIn
   };
 
   const setTracks = (tracks: Track[]) => update((g) => ({ ...g, tracks }));
@@ -184,7 +214,7 @@ export function Host({ authError }: { authError?: string }) {
             Nueva partida con los mismos
           </button>
           <button className="btn" onClick={() => { saveGame(null); navigate('/historial'); }}>Ver historial</button>
-          <button className="btn ghost" onClick={() => { update(() => E.newGame({ settings: game.settings })); }}>Empezar de cero</button>
+          <button className="btn ghost" onClick={startFromScratch} title="Lista y puntajes nuevos. Los celulares conectados siguen en la sala.">Empezar de cero</button>
         </div>
       </div>
     );

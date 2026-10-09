@@ -3,8 +3,9 @@
 // servidor en BASE; `npm run test:e2e` lo levanta y lo apaga.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import WebSocket from 'ws';
 import {
-  launch, openJudge, openTV, addTablePlayers, addTracks, setSteps, start, gameState, phaseLabel, until, acceptDialogs
+  launch, openJudge, openTV, openPlayer, addTablePlayers, addTracks, setSteps, start, gameState, phaseLabel, until, acceptDialogs
 } from './helpers.mjs';
 
 let browser;
@@ -192,4 +193,222 @@ test('A08: con empate, juez, TV e historial anuncian lo mismo', async () => {
   }
   assert.deepEqual([...j.errors, ...tv.errors], []);
   await j.ctx.close(); await tv.ctx.close();
+});
+
+// ---------- Bloque 4: experiencia de juego ----------
+
+test('A07: en modo mesa no se leen los próximos temas hasta que el juez los pide', async () => {
+  const j = await openJudge(browser);
+  await addTablePlayers(j.page, ['Ana', 'Beto']);
+  await addTracks(j.page, ['Tema Uno', 'Tema Dos', 'Tema Tres']);
+  await start(j.page);
+  const upcoming = j.page.getByTestId('upcoming');
+  assert.ok(await j.page.getByLabel('Modo mesa').isChecked(), 'modo mesa activo con jugadores de mesa');
+  const hidden = await upcoming.innerHTML();
+  for (const t of ['Tema Dos', 'Tema Tres', 'Artista de']) assert.ok(!hidden.includes(t), `"${t}" no debe estar ni en el DOM`);
+  assert.equal(await upcoming.getByText('Tema oculto').count(), 2);
+  // El juez lo pide manteniendo apretado.
+  const btn = upcoming.getByRole('button', { name: 'Mantener para ver' });
+  await btn.hover();
+  await j.page.mouse.down();
+  await upcoming.getByText('Tema Dos', { exact: true }).waitFor();
+  await j.page.mouse.up();
+  await upcoming.getByText('Tema oculto').first().waitFor();
+  // Sin modo mesa (cada uno con su celu) se ven normalmente.
+  await j.page.getByLabel('Modo mesa').uncheck();
+  await upcoming.getByText('Tema Dos', { exact: true }).waitFor();
+  await j.ctx.close();
+});
+
+/** Cantidad de pulsaciones que el juez registró en el tema actual. */
+const buzzCount = async (page) => (await gameState(page)).round.events.filter((e) => e.kind === 'buzz').length;
+
+test('A09: Enter, Espacio y toque envían exactamente una pulsación cada uno', async () => {
+  const j = await openJudge(browser);
+  await addTracks(j.page, ['Tema Uno']);
+  await j.page.getByText('4 · Reglas').click();
+  await j.page.getByLabel('El que falla queda bloqueado en ese tema').uncheck();
+  const ana = await openPlayer(browser, j.room, 'Ana');
+  await ana.page.getByText('Esperando que arranque la partida').waitFor();
+  await start(j.page);
+  await sonar(j.page).click();
+  const btn = ana.page.locator('.bigbtn');
+  await ana.page.getByText('¡TOCÁ!').waitFor();
+
+  const cases = [
+    ['Enter', () => btn.press('Enter')],
+    ['Espacio', () => btn.press(' ')],
+    ['toque', () => btn.tap()]
+  ];
+  for (let i = 0; i < cases.length; i++) {
+    const [label, act] = cases[i];
+    await ana.page.getByText('¡TOCÁ!').waitFor();
+    await act();
+    await j.page.locator('.floorname', { hasText: 'Ana' }).waitFor({ timeout: 2000 }).catch(() => {
+      throw new Error(`${label}: la pulsación no llegó al juez`);
+    });
+    await j.page.waitForTimeout(500); // margen para detectar un duplicado
+    assert.equal(await buzzCount(j.page), i + 1, `${label}: exactamente una pulsación`);
+    await j.page.getByRole('button', { name: /Incorrecto/ }).click(); // sin bloqueo: puede volver a tocar
+  }
+  assert.deepEqual([...j.errors, ...ana.errors], []);
+  await j.ctx.close(); await ana.ctx.close();
+});
+
+test('A09: los pads del juez responden al teclado sin disparar otros atajos', async () => {
+  const { ctx, page } = await tableGame();
+  await sonar(page).click();
+  await page.waitForTimeout(200);
+  const pad = page.locator('.pad', { hasText: 'Beto' });
+  await pad.focus();
+  await page.keyboard.press(' ');
+  await page.locator('.floorname', { hasText: 'Beto' }).waitFor();
+  await page.waitForTimeout(400);
+  assert.equal(await buzzCount(page), 1);
+  assert.equal((await gameState(page)).phase, 'buzzed', 'Espacio sobre el pad no hace sonar el tema');
+  await ctx.close();
+});
+
+test('A10: "Empezar de cero" reincorpora a los celulares conectados', async () => {
+  const j = await openJudge(browser);
+  acceptDialogs(j.page);
+  await addTablePlayers(j.page, ['Mesa']);
+  await addTracks(j.page, ['Tema Uno']);
+  const beto = await openPlayer(browser, j.room, 'Beto');
+  await beto.page.getByText('Esperando que arranque la partida').waitFor();
+  await start(j.page);
+  await j.page.getByRole('button', { name: 'Revelar (nadie)' }).click();
+  await j.page.getByRole('button', { name: 'Terminar partida' }).first().click();
+  await j.page.getByText('Fin de la partida').waitFor();
+  await beto.page.getByText('Mirá el resultado en la tele').waitFor();
+
+  await j.page.getByRole('button', { name: 'Empezar de cero' }).click();
+  await j.page.getByText(/2 · Jugadores \(1\)/).click();
+  await j.page.getByText('📱 celu').waitFor();
+  const state = await gameState(j.page);
+  assert.deepEqual(state.players.map((p) => p.name), ['Beto'], 'queda el celular, se va el jugador de mesa');
+  assert.equal(state.tracks.length, 0, 'lista nueva');
+  await beto.page.getByText('Esperando que arranque la partida').waitFor();
+  assert.equal(await beto.page.getByText('El juez todavía no te agregó').count(), 0);
+  // Y puede jugar la partida nueva sin recargar.
+  await addTracks(j.page, ['Tema Nuevo']);
+  await start(j.page);
+  await sonar(j.page).click();
+  await beto.page.getByText('¡TOCÁ!').waitFor();
+  await beto.page.locator('.bigbtn').tap();
+  await j.page.locator('.floorname', { hasText: 'Beto' }).waitFor();
+  assert.deepEqual([...j.errors, ...beto.errors], []);
+  await j.ctx.close(); await beto.ctx.close();
+});
+
+// ---------- Recorridos transversales: conexiones y nueva partida ----------
+
+/** Socket crudo contra el servidor local de pruebas (nunca producción). */
+function rawSocket() {
+  const url = (process.env.BASE ?? 'http://127.0.0.1:8791').replace(/^http/, 'ws') + '/ws';
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(url);
+    ws.on('open', () => resolve(ws));
+    ws.on('error', reject);
+  });
+}
+
+test('A03: un mensaje malformado de un intruso no deja en blanco al juez', async () => {
+  const j = await openJudge(browser);
+  const evil = await rawSocket();
+  evil.send(JSON.stringify({ t: 'join', room: j.room, role: 'player', name: 'X' }));
+  await new Promise((r) => setTimeout(r, 300));
+  for (const data of [
+    { k: 'hello', role: 'player', name: { trim: 1 } },
+    { k: 'hello', role: 'player', name: null },
+    { k: 'rename', name: ['x'] },
+    { k: 'buzz', at: 'ya' },
+    null
+  ]) evil.send(JSON.stringify({ t: 'msg', data }));
+  await new Promise((r) => setTimeout(r, 500));
+  // El panel sigue dibujado y operable.
+  await j.page.getByRole('heading', { name: 'Panel del juez' }).waitFor();
+  assert.ok((await j.page.locator('#root').innerHTML()).length > 1000, 'el juez no quedó en blanco');
+  assert.equal(await j.page.getByText('Algo falló').count(), 0);
+  await addTracks(j.page, ['Tema Uno']);
+  await j.page.getByText(/Lista de la partida \(1\)/).waitFor();
+  assert.deepEqual(j.errors, []);
+  evil.close();
+  await j.ctx.close();
+});
+
+test('A04/A12: recargar el celular conserva jugador y puntaje; el juez recargado retoma la sala', async () => {
+  const j = await openJudge(browser);
+  await addTracks(j.page, ['Tema Uno', 'Tema Dos']);
+  const ana = await openPlayer(browser, j.room, 'Ana');
+  await ana.page.getByText('Esperando que arranque la partida').waitFor();
+  await start(j.page);
+  await sonar(j.page).click();
+  await ana.page.locator('.bigbtn').tap();
+  await j.page.locator('.floorname', { hasText: 'Ana' }).waitFor();
+  await j.page.getByRole('button', { name: /Correcto/ }).click();
+  const before = await gameState(j.page);
+  const anaId = before.players[0].id;
+
+  // Recarga del celular: misma identidad, mismo puntaje.
+  await ana.page.reload();
+  await ana.page.locator('.top', { hasText: 'Ana' }).getByText('1', { exact: true }).waitFor();
+  const after = await gameState(j.page);
+  assert.equal(after.players.length, 1, 'no se duplica el jugador');
+  assert.equal(after.players[0].id, anaId);
+  assert.equal(after.players[0].connected, true);
+
+  // Recarga del juez: misma sala, el celular sigue jugando.
+  await j.page.reload();
+  await j.page.locator('.stage').waitFor();
+  await j.page.getByText(`Sala ${j.room}`).waitFor();
+  await j.page.getByRole('button', { name: /Siguiente tema/ }).click();
+  await sonar(j.page).click();
+  await ana.page.getByText('¡TOCÁ!').waitFor();
+  await ana.page.locator('.bigbtn').tap();
+  await j.page.locator('.floorname', { hasText: 'Ana' }).waitFor();
+  assert.deepEqual([...j.errors, ...ana.errors], []);
+  await j.ctx.close(); await ana.ctx.close();
+});
+
+test('A05: abrir el juez en otra pestaña desplaza a la anterior sin que ésta siga mandando', async () => {
+  const j = await openJudge(browser);
+  await addTracks(j.page, ['Tema Uno']);
+  const tv = await openTV(browser, j.room);
+  await tv.page.getByText('Sumate con tu celu').waitFor();
+  // "Duplicar pestaña": la copia hereda sessionStorage, con la clave de la sala.
+  const saved = await j.page.evaluate(() => sessionStorage.getItem('en1nota.room'));
+  assert.ok(saved, 'el juez guarda sala y clave');
+  const second = await j.ctx.newPage();
+  await second.addInitScript((v) => sessionStorage.setItem('en1nota.room', v), saved);
+  await second.goto(j.page.url());
+  await second.getByText(`Sala ${j.room}`).first().waitFor();
+  await j.page.getByText('La sala se abrió en otro lado').waitFor();
+  // La pestaña nueva manda; la TV sigue en la sala.
+  await addTablePlayers(second, ['Nueva']);
+  await tv.page.getByText('Nueva').waitFor();
+  assert.deepEqual(tv.errors, []);
+  await j.ctx.close(); await tv.ctx.close();
+});
+
+test('Nueva partida con los mismos jugadores: puntajes en cero, mismos celulares', async () => {
+  const j = await openJudge(browser);
+  await addTracks(j.page, ['Tema Uno']);
+  const ana = await openPlayer(browser, j.room, 'Ana');
+  await ana.page.getByText('Esperando que arranque la partida').waitFor();
+  await start(j.page);
+  await sonar(j.page).click();
+  await ana.page.locator('.bigbtn').tap();
+  await j.page.getByRole('button', { name: /Correcto/ }).click();
+  await j.page.getByRole('button', { name: 'Terminar partida' }).first().click();
+  await j.page.getByText('Fin de la partida').waitFor();
+  await j.page.getByRole('button', { name: 'Nueva partida con los mismos' }).click();
+  await start(j.page);
+  const g = await gameState(j.page);
+  assert.deepEqual(g.players.map((p) => [p.name, p.score]), [['Ana', 0]]);
+  await sonar(j.page).click();
+  await ana.page.getByText('¡TOCÁ!').waitFor();
+  await ana.page.locator('.bigbtn').tap();
+  await j.page.locator('.floorname', { hasText: 'Ana' }).waitFor();
+  await j.ctx.close(); await ana.ctx.close();
 });

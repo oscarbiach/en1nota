@@ -6,6 +6,7 @@ import { loadPlayerName, savePlayerName } from '../storage/store';
 import { playSfx, unlockAudio } from '../audio/sfx';
 import { RevealCard } from '../components/RevealCard';
 import { navigate } from '../App';
+import { usePress } from '../components/press';
 
 const STATUS_TEXT: Record<PeerStatus, string> = {
   connecting: 'Conectando…',
@@ -83,6 +84,7 @@ function Buzzer({ room, name }: { room: string; name: string }) {
     conn.current?.buzz();
     try { navigator.vibrate?.(60); } catch { /* sin vibración */ }
   };
+  const press = usePress(buzz);
 
   let label: string;
   let sub = '';
@@ -114,7 +116,7 @@ function Buzzer({ room, name }: { room: string; name: string }) {
           </div>
         </div>
       ) : (
-        <button className={`bigbtn ${cls}`} onPointerDown={buzz} disabled={!canBuzz && !hasFloor}>
+        <button className={`bigbtn ${cls}`} {...press} disabled={!canBuzz && !hasFloor} aria-label={`${label}. ${sub}`}>
           <span>{label}</span>
           <small>{sub}</small>
         </button>

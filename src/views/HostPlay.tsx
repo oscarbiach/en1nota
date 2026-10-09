@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { HostCtx } from './Host';
 import * as E from '../game/engine';
 import { Scoreboard } from '../components/Scoreboard';
+import { usePress } from '../components/press';
 import { ConnectPlayer, ManualPlayer, SdkPlayer, sdkSupported } from '../spotify/player';
 import { loadPlayerMode, savePlayerMode, type PlayerModeSetting } from '../storage/store';
 import { secs, mmss } from '../util/format';
@@ -15,6 +16,7 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
   const floor = game.round.buzzedPlayerId ? game.players.find((p) => p.id === game.round.buzzedPlayerId) : undefined;
   const [err, setErr] = useState<string>();
   const [peek, setPeek] = useState(false);
+  const [peekNext, setPeekNext] = useState(false);
   const [mesa, setMesa] = useState(() => game.players.some((p) => !ctx.peers.has(p.id)));
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -71,7 +73,10 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
   // Teclas: 1-8 pulsadores (modo mesa), espacio = sonar, C/X/T = correcto/incorrecto/tarareo, N = siguiente.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      // Enter / Espacio sobre un botón enfocado activan ese botón, no un atajo.
+      if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
       const g = gameRef.current;
       if (/^[1-8]$/.test(e.key)) {
         const p = g.players.find((x) => x.key === e.key && !ctx.peers.has(x.id));
@@ -174,10 +179,7 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
           {mesa && (
             <div className="pads mt">
               {game.players.filter((p) => !ctx.peers.has(p.id)).map((p) => (
-                <button key={p.id} className="pad" style={{ ['--c' as string]: p.color }} disabled={!E.canBuzz(game, p.id)} onPointerDown={() => localBuzz(p.id)}>
-                  {p.name}
-                  <kbd>tecla {p.key}</kbd>
-                </button>
+                <Pad key={p.id} name={p.name} color={p.color} hotkey={p.key} disabled={!E.canBuzz(game, p.id)} onBuzz={() => localBuzz(p.id)} />
               ))}
             </div>
           )}
@@ -204,11 +206,25 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
             </div>
           </div>
           <PlayerQuick ctx={ctx} />
-          <div className="card soft">
-            <h3>Próximos</h3>
-            <ul className="list">
+          <div className="card soft" data-testid="upcoming">
+            <div className="row between">
+              <h3 style={{ margin: 0 }}>Próximos</h3>
+              {mesa && game.round.trackIndex + 1 < game.tracks.length && (
+                <button className="btn sm ghost" onPointerDown={() => setPeekNext(true)} onPointerUp={() => setPeekNext(false)} onPointerLeave={() => setPeekNext(false)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setPeekNext(true); }} onKeyUp={() => setPeekNext(false)} onBlur={() => setPeekNext(false)}>
+                  Mantener para ver
+                </button>
+              )}
+            </div>
+            <ul className="list mt">
               {game.tracks.slice(game.round.trackIndex + 1, game.round.trackIndex + 4).map((t, i) => (
-                <li key={t.uri} className="item"><span className="muted small">{game.round.trackIndex + 2 + i}</span><div className="t"><b>{t.name}</b><span>{t.artists}</span></div></li>
+                <li key={t.uri} className="item">
+                  <span className="muted small">{game.round.trackIndex + 2 + i}</span>
+                  {/* En modo mesa la pantalla es compartida: los títulos futuros ni siquiera se dibujan. */}
+                  {mesa && !peekNext
+                    ? <div className="t"><b>Tema oculto</b><span>modo mesa</span></div>
+                    : <div className="t"><b>{t.name}</b><span>{t.artists}</span></div>}
+                </li>
               ))}
               {game.round.trackIndex + 1 >= game.tracks.length && <li className="muted small">Este es el último.</li>}
             </ul>
@@ -216,6 +232,17 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Pulsador de modo mesa: toque, tecla numérica, o Enter/Espacio con el foco encima. */
+function Pad({ name, color, hotkey, disabled, onBuzz }: { name: string; color: string; hotkey?: string; disabled: boolean; onBuzz: () => void }) {
+  const press = usePress(onBuzz);
+  return (
+    <button className="pad" style={{ ['--c' as string]: color }} disabled={disabled} {...press}>
+      {name}
+      <kbd>tecla {hotkey}</kbd>
+    </button>
   );
 }
 

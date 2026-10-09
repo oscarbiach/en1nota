@@ -185,7 +185,7 @@ function SpotifyTab({ ctx }: { ctx: HostCtx }) {
 }
 
 function PlayersTab({ ctx }: { ctx: HostCtx }) {
-  const { game, update, room, conn } = ctx;
+  const { game, update, room } = ctx;
   const [name, setName] = useState('');
   const add = () => { if (!name.trim() || game.players.length >= 8) return; update((g) => E.addPlayer(g, name)); setName(''); };
 
@@ -222,7 +222,7 @@ function PlayersTab({ ctx }: { ctx: HostCtx }) {
                 <input value={p.name} onChange={(e) => update((g) => E.renamePlayer(g, p.id, e.target.value))} style={{ minHeight: 34, padding: '4px 8px', background: 'transparent', border: 'none' }} />
               </div>
               <span className="pill">{ctx.peers.has(p.id) ? (p.connected ? '📱 celu' : '📴 desconectado') : `⌨️ tecla ${p.key}`}</span>
-              <button className="btn sm ghost" onClick={() => { if (ctx.peers.has(p.id)) conn.kick(p.id); update((g) => E.removePlayer(g, p.id)); }}>✕</button>
+              <button className="btn sm ghost" aria-label={`Quitar a ${p.name}`} onClick={() => ctx.kick(p.id)}>✕</button>
             </li>
           ))}
         </ul>
