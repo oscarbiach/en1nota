@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { deleteHistory, loadHistory, type HistoryEntry } from '../storage/store';
 import { Podium } from '../components/Podium';
+import { computeStats } from '../game/engine';
 import { fecha, secs } from '../util/format';
 import { navigate } from '../App';
 
@@ -9,13 +10,15 @@ export function HistoryView() {
   const [open, setOpen] = useState<string | null>(items[0]?.id ?? null);
   const sel = items.find((h) => h.id === open);
 
-  // Récords acumulados entre partidas.
+  // Récords acumulados entre partidas. Ganadores con el mismo criterio que
+  // el juez y la TV: en un empate, cada ganador suma una partida ganada.
+  const results = new Map(items.map((h) => [h.id, computeStats(h.game)]));
   const totals = new Map<string, { games: number; wins: number; points: number }>();
   for (const h of items) {
-    const top = [...h.players].sort((a, b) => b.score - a.score)[0];
-    for (const p of h.players) {
+    const st = results.get(h.id)!;
+    for (const p of st.ranking) {
       const t = totals.get(p.name) ?? { games: 0, wins: 0, points: 0 };
-      t.games++; t.points += p.score; if (top && top.name === p.name && top.score > 0) t.wins++;
+      t.games++; t.points += p.score; if (st.winnerIds.includes(p.id)) t.wins++;
       totals.set(p.name, t);
     }
   }
@@ -47,7 +50,7 @@ export function HistoryView() {
             <li key={h.id} className={`item ${h.id === open ? 'current' : ''}`} onClick={() => setOpen(h.id)} style={{ cursor: 'pointer' }}>
               <div className="t">
                 <b>{fecha(h.playedAt)}</b>
-                <span>{h.trackCount} temas · {[...h.players].sort((a, b) => b.score - a.score).map((p) => `${p.name} ${p.score}`).join(' · ')}</span>
+                <span>{h.trackCount} temas · {results.get(h.id)!.ranking.map((p) => `${p.name} ${p.score}`).join(' · ')}</span>
               </div>
               <button className="btn sm ghost" onClick={(e) => { e.stopPropagation(); if (confirm('¿Borrar esta partida?')) { deleteHistory(h.id); setItems(loadHistory()); } }}>✕</button>
             </li>
@@ -68,7 +71,7 @@ export function HistoryView() {
                     {t?.image && <img src={t.image} alt="" />}
                     <div className="t">
                       <b>{t?.name ?? '?'}</b>
-                      <span>{solver ? `${solver.name} en la pasada ${r.step + 1}${buzz?.reactionMs !== undefined ? ` (${secs(buzz.reactionMs)})` : ''}` : 'nadie la sacó'}{r.events.filter((e) => e.kind === 'wrong' || e.kind === 'hum' || e.kind === 'timeout').length ? ` · ${r.events.filter((e) => e.kind === 'wrong' || e.kind === 'hum' || e.kind === 'timeout').length} fallos` : ''}</span>
+                      <span>{solver ? `${solver.name} en la pasada ${r.step + 1}${buzz?.reactionMs !== undefined ? ` (${secs(buzz.reactionMs)})` : ''}` : r.abandoned ? 'sin terminar' : 'nadie la sacó'}{r.events.filter((e) => e.kind === 'wrong' || e.kind === 'hum' || e.kind === 'timeout').length ? ` · ${r.events.filter((e) => e.kind === 'wrong' || e.kind === 'hum' || e.kind === 'timeout').length} fallos` : ''}</span>
                     </div>
                   </li>
                 );

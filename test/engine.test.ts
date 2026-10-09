@@ -144,3 +144,98 @@ test('A02: "buzzed" sin jugador con la palabra vuelve a pulsadores abiertos', ()
   const g = E.restoreGame({ ...inPhase('buzzed'), round: { ...inPhase('buzzed').round, buzzedPlayerId: undefined } });
   assert.equal(g.phase, 'open');
 });
+
+// ---------- Regresión A06: terminar antes conserva la ronda actual ----------
+
+test('A06: terminar tras acertar el tema 1 de 2 registra 1 acierto y 1 tema', () => {
+  let g = E.markPlaying(setup(), 0);
+  g = E.resolveBuzzes(E.receiveBuzz(g, { playerId: 'a', at: 300 }));
+  g = E.judgeCorrect(g);
+  g = E.finishGame(g);
+  assert.equal(g.phase, 'finished');
+  assert.equal(g.history.length, 1);
+  const st = E.computeStats(g);
+  assert.equal(st.ranking.find((p) => p.id === 'a')?.correct, 1);
+  assert.equal(st.fastest?.player.id, 'a');
+  assert.ok(E.awards(g).some((a) => a.sub === 'de 1 temas'));
+});
+
+test('A06: terminar a mitad de un tema conserva sus fallos y lo marca sin terminar', () => {
+  let g = E.markPlaying(setup(), 0);
+  g = E.resolveBuzzes(E.receiveBuzz(g, { playerId: 'b', at: 100 }));
+  g = E.judgeWrong(g);
+  g = E.finishGame(g);
+  assert.equal(g.history.length, 1);
+  assert.equal(g.history[0].abandoned, true);
+  const st = E.computeStats(g);
+  assert.equal(st.ranking.find((p) => p.id === 'b')?.wrong, 1);
+  assert.equal(st.unsolved, 0, 'un tema abandonado no cuenta como "nadie la sacó"');
+});
+
+test('A06: terminar con alguien con la palabra no deja la palabra colgada', () => {
+  let g = E.markPlaying(setup(), 0);
+  g = E.resolveBuzzes(E.receiveBuzz(g, { playerId: 'b', at: 100 }));
+  g = E.finishGame(g);
+  assert.equal(g.history[0].buzzedPlayerId, undefined);
+});
+
+test('A06: terminar en un tema que no sonó no inventa rondas', () => {
+  let g = E.markPlaying(setup(), 0);
+  g = E.nextTrack(E.reveal(g));
+  assert.equal(g.phase, 'ready');
+  g = E.finishGame(g);
+  assert.equal(g.history.length, 1);
+});
+
+test('A06: terminar dos veces o después del último tema no duplica', () => {
+  let g = E.nextTrack(E.reveal(E.markPlaying(setup(), 0)));
+  g = E.nextTrack(E.reveal(E.markPlaying(g, 0)));
+  assert.equal(g.phase, 'finished');
+  assert.equal(g.history.length, 2);
+  assert.equal(E.finishGame(g).history.length, 2);
+  let h = E.finishGame(E.judgeCorrect(E.resolveBuzzes(E.receiveBuzz(E.markPlaying(setup(), 0), { playerId: 'a', at: 1 }))));
+  h = E.finishGame(h);
+  assert.equal(h.history.length, 1);
+});
+
+// ---------- Regresión A08: un único criterio de ganador ----------
+
+function finishedWith(order: string[], plays: Array<[string, 'correct' | 'wrong']>) {
+  let g = E.newGame();
+  for (const n of order) g = E.addPlayer(g, n, n.toLowerCase());
+  g = E.startGame({ ...g, tracks: plays.map((_, i) => track(i)) });
+  for (const [pid, verdict] of plays) {
+    g = E.resolveBuzzes(E.receiveBuzz(E.markPlaying(g, 0), { playerId: pid, at: 10 }));
+    g = verdict === 'correct' ? E.judgeCorrect(g) : E.reveal(E.judgeWrong(g));
+    g = E.nextTrack(g);
+  }
+  return g.phase === 'finished' ? g : E.finishGame(g);
+}
+
+test('A08: empate en puntos y aciertos se comparte, sin desempatar por nombre', () => {
+  const g = finishedWith(['Beto', 'Ana'], [['beto', 'correct'], ['ana', 'correct']]);
+  const st = E.computeStats(g);
+  assert.deepEqual([...st.winnerIds].sort(), ['ana', 'beto']);
+  assert.deepEqual(st.ranking.map((p) => p.position), [1, 1]);
+  const pub = E.toPublic(g);
+  assert.deepEqual([...(pub.final?.winnerIds ?? [])].sort(), ['ana', 'beto']);
+  assert.deepEqual(pub.final?.ranking.map((r) => r.position), [1, 1]);
+});
+
+test('A08: a igual puntaje gana quien tiene más aciertos', () => {
+  // Beto: +1 +1 -1 = 1 con 2 aciertos; Ana: +1 = 1 con 1 acierto.
+  const g = finishedWith(['Ana', 'Beto'], [['beto', 'correct'], ['beto', 'correct'], ['beto', 'wrong'], ['ana', 'correct']]);
+  const st = E.computeStats(g);
+  assert.deepEqual(st.winnerIds, ['beto']);
+  assert.deepEqual(st.ranking.map((p) => [p.id, p.position]), [['beto', 1], ['ana', 2]]);
+});
+
+test('A08: puntajes en cero y negativos', () => {
+  const ceros = finishedWith(['Ana', 'Beto'], []);
+  assert.deepEqual([...E.computeStats(ceros).winnerIds].sort(), ['ana', 'beto']);
+  const neg = finishedWith(['Ana', 'Beto', 'Cami'], [['beto', 'wrong'], ['cami', 'wrong'], ['cami', 'wrong']]);
+  const st = E.computeStats(neg);
+  assert.deepEqual(st.winnerIds, ['ana']);
+  assert.deepEqual(st.ranking.map((p) => [p.id, p.score, p.position]), [['ana', 0, 1], ['beto', -1, 2], ['cami', -2, 3]]);
+  assert.deepEqual(E.toPublic(neg).final?.winnerIds, ['ana']);
+});

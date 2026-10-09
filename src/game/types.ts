@@ -67,6 +67,8 @@ export interface Round {
   solvedBy?: string;
   /** Instante (reloj del host) en que arrancó a sonar la última pasada. */
   playStartedAt?: number;
+  /** La partida terminó con este tema a medio jugar (sin revelar). */
+  abandoned?: boolean;
 }
 
 export interface Buzz {

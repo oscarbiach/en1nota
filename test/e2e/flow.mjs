@@ -109,7 +109,9 @@ try {
 
   // ---- fin ----
   await judge.getByText('Fin de la partida').waitFor();
-  await tv.locator('.huge', { hasText: '🏆 Beto' }).waitFor();
+  await tv.getByTestId('winner-line').getByText('🏆 Ganó Beto').waitFor();
+  const judgeWinner = await judge.getByTestId('winner-line').textContent();
+  if (judgeWinner !== '🏆 Ganó Beto') throw new Error(`juez y TV no coinciden: ${judgeWinner}`);
   await tv.getByText('Tarareador').waitFor();
   const scores = await tv.locator('.podium .p').allTextContents();
   log('podio TV:', scores.map((s) => s.replace(/\s+/g, ' ')).join(' | '));

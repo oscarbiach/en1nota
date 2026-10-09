@@ -4,7 +4,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  launch, openJudge, addTablePlayers, addTracks, setSteps, start, gameState, phaseLabel, until
+  launch, openJudge, openTV, addTablePlayers, addTracks, setSteps, start, gameState, phaseLabel, until, acceptDialogs
 } from './helpers.mjs';
 
 let browser;
@@ -132,4 +132,64 @@ test('A11: tras recargar en música manual, selector, etiqueta y botones coincid
   assert.ok(await page.getByRole('button', { name: /Reactivar|Activar/ }).isEnabled());
   assert.ok(await sonar(page).isEnabled());
   await ctx.close();
+});
+
+// ---------- Bloque 3: resultados coherentes ----------
+
+test('A06: terminar tras acertar el tema 1 de 2 conserva acierto, tema e historial', async () => {
+  const { ctx, page, errors } = await tableGame();
+  acceptDialogs(page);
+  await sonar(page).click();
+  await page.keyboard.press('1');
+  await page.locator('.floorname', { hasText: 'Ana' }).waitFor();
+  await page.getByRole('button', { name: /Correcto/ }).click();
+  await page.getByText('¡Ana acertó! +1').waitFor();
+  await page.getByRole('button', { name: 'Terminar partida' }).click();
+  await page.getByText('Fin de la partida').waitFor();
+  const ana = page.getByTestId('podium-entry').filter({ hasText: 'Ana' });
+  await ana.getByText('1 aciertos').waitFor();
+  await page.getByText('de 1 temas').waitFor();
+  assert.equal((await gameState(page)).history.length, 1);
+  await page.getByRole('button', { name: 'Ver historial' }).click();
+  await page.getByText(/^1 temas · Ana 1/).waitFor();
+  await page.getByText(/Ana en la pasada 1/).waitFor();
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('A08: con empate, juez, TV e historial anuncian lo mismo', async () => {
+  const j = await openJudge(browser);
+  acceptDialogs(j.page);
+  await addTablePlayers(j.page, ['Beto', 'Ana']);
+  await addTracks(j.page, ['Tema Uno', 'Tema Dos']);
+  await setSteps(j.page, '0.4');
+  const tv = await openTV(browser, j.room);
+  await tv.page.getByText('Sumate con tu celu').waitFor();
+  await start(j.page);
+  for (const key of ['1', '2']) { // Beto acierta el 1, Ana el 2
+    await sonar(j.page).click();
+    await j.page.keyboard.press(key);
+    await j.page.locator('.floorname').waitFor();
+    await j.page.getByRole('button', { name: /Correcto/ }).click();
+    await j.page.getByRole('button', { name: /Siguiente tema|Terminar partida/ }).first().click();
+  }
+  await j.page.getByText('Fin de la partida').waitFor();
+  const expected = '🤝 Empate: Beto y Ana';
+  assert.equal(await j.page.getByTestId('winner-line').textContent(), expected);
+  await tv.page.getByTestId('winner-line').getByText(expected).waitFor();
+  // Mismo orden y puestos compartidos en ambas pantallas.
+  const judgeEntries = await j.page.getByTestId('podium-entry').allTextContents();
+  const tvEntries = await tv.page.getByTestId('podium-entry').allTextContents();
+  assert.equal(judgeEntries.length, 2);
+  assert.deepEqual(tvEntries.map((t) => t.replace(/\d+ aciertos.*$/, '')), judgeEntries.map((t) => t.replace(/\d+ aciertos.*$/, '')));
+  await j.page.getByRole('button', { name: 'Ver historial' }).click();
+  // El título del ganador también está en la pantalla anterior: esperar al historial.
+  await j.page.getByRole('heading', { name: 'Ranking histórico' }).waitFor();
+  assert.equal(await j.page.getByTestId('winner-line').textContent(), expected);
+  for (const name of ['Beto', 'Ana']) {
+    const row = j.page.locator('tbody tr', { hasText: name });
+    assert.deepEqual((await row.locator('td.num').allTextContents()), ['1', '1', '1'], `${name}: 1 partida, 1 ganada, 1 punto`);
+  }
+  assert.deepEqual([...j.errors, ...tv.errors], []);
+  await j.ctx.close(); await tv.ctx.close();
 });

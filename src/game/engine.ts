@@ -1,5 +1,5 @@
 // Motor de reglas: funciones puras sobre GameState. Sin red, sin audio.
-import type { Buzz, GameState, Player, PublicState, Round, RoundEvent, Settings, Track } from './types.ts';
+import type { Buzz, FinalResult, GameState, Player, PublicState, Round, RoundEvent, Settings, Track } from './types.ts';
 import { DEFAULT_SETTINGS, PLAYER_COLORS } from './types.ts';
 
 export function newId(): string {
@@ -227,8 +227,27 @@ export function jumpToTrack(g: GameState, index: number): GameState {
   return { ...g, phase: 'ready', round: newRound(index), notice: undefined };
 }
 
+/**
+ * El juez termina la partida antes del último tema. La ronda en curso entra
+ * al historial una sola vez si tuvo actividad (sonó, alguien tocó, se
+ * reveló): los puntos que ya cambió tienen que verse en las estadísticas.
+ * Si no estaba revelada queda marcada como abandonada. Un tema que no llegó
+ * a sonar no se registra.
+ */
 export function finishGame(g: GameState): GameState {
-  return { ...g, phase: 'finished', finishedAt: Date.now() };
+  if (g.phase === 'finished') return g;
+  const r = g.round;
+  const played = g.phase !== 'lobby' && (r.events.length > 0 || g.phase === 'revealed');
+  const closed = played
+    ? { ...r, pending: [], buzzedPlayerId: undefined, ...(g.phase === 'revealed' ? {} : { abandoned: true }) }
+    : undefined;
+  return {
+    ...g,
+    phase: 'finished',
+    finishedAt: Date.now(),
+    notice: undefined,
+    history: closed ? [...g.history, closed] : g.history
+  };
 }
 
 // ---------- vista pública ----------
@@ -252,7 +271,17 @@ export function toPublic(g: GameState): PublicState {
     notice: g.notice,
     lastEvent,
     finished: g.phase === 'finished',
-    awards: g.phase === 'finished' ? awards(g) : undefined
+    awards: g.phase === 'finished' ? awards(g) : undefined,
+    final: g.phase === 'finished' ? finalResult(g) : undefined
+  };
+}
+
+/** Resultado final para pantallas que no tienen la partida completa (TV). */
+export function finalResult(g: GameState): FinalResult {
+  const st = computeStats(g);
+  return {
+    ranking: st.ranking.map((p) => ({ id: p.id, position: p.position, score: p.score, correct: p.correct })),
+    winnerIds: st.winnerIds
   };
 }
 
@@ -269,10 +298,25 @@ export function awards(g: GameState): Array<{ k: string; v: string; sub: string 
 
 // ---------- estadísticas ----------
 
-export type RankedPlayer = Player & { correct: number; wrong: number; hums: number; buzzes: number; bestReactionMs?: number };
+export type RankedPlayer = Player & { correct: number; wrong: number; hums: number; buzzes: number; bestReactionMs?: number; position: number };
+
+/**
+ * Criterio único de ranking para juez, TV e historial: más puntos, y a igual
+ * puntaje más aciertos. Si sigue igual, el puesto se comparte (1, 1, 3) y
+ * todos los empatados en el primero son ganadores. No se desempata por
+ * nombre ni por orden de llegada. Dentro de un empate se conserva el orden
+ * en que entraron los jugadores.
+ */
+export function rankStandings<T extends { score: number; correct: number }>(players: T[]): Array<T & { position: number }> {
+  const better = (a: T, b: T) => b.score - a.score || b.correct - a.correct;
+  const sorted = players.map((p, i) => ({ p, i })).sort((x, y) => better(x.p, y.p) || x.i - y.i).map((x) => x.p);
+  return sorted.map((p) => ({ ...p, position: 1 + sorted.filter((q) => better(q, p) < 0).length }));
+}
 
 export interface Stats {
   ranking: RankedPlayer[];
+  /** Todos los que comparten el primer puesto. */
+  winnerIds: string[];
   fastest?: { player: Player; reactionMs: number; trackIndex: number };
   mostNegative?: RankedPlayer;
   mostHums?: RankedPlayer;
@@ -308,18 +352,18 @@ export function computeStats(g: GameState): Stats {
       if (e.kind === 'hum') s.hums++;
     }
   }
-  const ranking = g.players
-    .map((p) => {
-      const s = per.get(p.id)!;
-      return { ...p, correct: s.correct, wrong: s.wrong, hums: s.hums, buzzes: s.buzzes, bestReactionMs: s.best };
-    })
-    .sort((a, b) => b.score - a.score || b.correct - a.correct || a.name.localeCompare(b.name));
+  const ranking = rankStandings(g.players.map((p) => {
+    const s = per.get(p.id)!;
+    return { ...p, correct: s.correct, wrong: s.wrong, hums: s.hums, buzzes: s.buzzes, bestReactionMs: s.best };
+  }));
+  const winnerIds = ranking.filter((p) => p.position === 1).map((p) => p.id);
   const withScore = ranking.filter((p) => p.buzzes > 0);
   const mostNegative = ranking.length && ranking[ranking.length - 1].score < 0 ? ranking[ranking.length - 1] : undefined;
   const mostHums = [...withScore].sort((a, b) => b.hums - a.hums)[0];
   const mostImpulsive = [...withScore].sort((a, b) => b.wrong + b.hums - (a.wrong + a.hums))[0];
   return {
     ranking,
+    winnerIds,
     fastest,
     mostNegative,
     mostHums: mostHums && mostHums.hums > 0 ? mostHums : undefined,

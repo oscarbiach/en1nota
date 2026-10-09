@@ -76,6 +76,22 @@ export async function openPlayer(browser, room, name) {
   return { ctx, page, errors };
 }
 
+/** Abre la pantalla de TV de la sala. */
+export async function openTV(browser, room) {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(`${BASE}/#/tv?sala=${room}`);
+  await page.getByRole('button', { name: 'Activar pantalla' }).click();
+  return { ctx, page, errors };
+}
+
+/** Acepta automáticamente los confirm() del juez. */
+export function acceptDialogs(page) {
+  page.on('dialog', (d) => d.accept());
+}
+
 /** Estado completo de la partida tal como lo guarda el juez. */
 export function gameState(page) {
   return page.evaluate(() => JSON.parse(localStorage.getItem('en1nota.game') ?? 'null'));
