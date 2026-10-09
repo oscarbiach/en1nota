@@ -47,6 +47,15 @@ test('A03: parseHostMsg acepta el estado real del motor y rechaza estados rotos'
   for (const b of broken) assert.equal(parseHostMsg(b), null, JSON.stringify(b).slice(0, 80));
 });
 
+test('un título de Spotify muy largo no invalida el estado revelado', () => {
+  let g = E.addPlayer(E.newGame(), 'Ana', 'aaaaaaaa');
+  const long = 'Symphony No. 9 in D Minor, Op. 125 "Choral": IV. '.repeat(12);
+  g = E.startGame({ ...g, tracks: [{ id: 't', uri: 'u', name: long, artists: long, album: long, durationMs: 1, startMs: 0 }] });
+  const msg = { k: 'state', state: E.toPublic(E.reveal(g)), serverNow: 1 };
+  assert.ok(long.length > 500);
+  assert.ok(parseHostMsg(msg));
+});
+
 test('A03: el motor tolera nombres que no son texto', () => {
   const g = E.addPlayer(E.newGame(), { trim: 1 } as unknown as string);
   assert.equal(g.players[0].name, 'Jugador 1');

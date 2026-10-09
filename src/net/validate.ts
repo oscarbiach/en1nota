@@ -5,6 +5,7 @@ import type { HostMsg, PeerMsg, SfxName } from './protocol.ts';
 import type { Phase, PublicState } from '../game/types.ts';
 
 const NAME_MAX = 24;
+const TEXT_MAX = 4000;
 const PHASES = new Set<Phase>(['lobby', 'ready', 'playing', 'open', 'buzzed', 'revealed', 'finished']);
 const SFX = new Set<SfxName>(['buzz', 'correct', 'wrong', 'hum', 'reveal', 'start', 'tick', 'finish']);
 
@@ -41,11 +42,13 @@ function isPublicState(s: unknown): s is PublicState {
   }
   for (const k of ['trackIndex', 'trackCount', 'step', 'stepMs', 'stepCount'] as const) if (!isNum(s[k])) return false;
   if (!strArr(s.lockedPlayerIds)) return false;
-  if (!optStr(s.buzzedPlayerId, 64) || !optStr(s.solvedBy, 64) || !optStr(s.notice)) return false;
+  if (!optStr(s.buzzedPlayerId, 64) || !optStr(s.solvedBy, 64) || !optStr(s.notice, TEXT_MAX)) return false;
   if (typeof s.finished !== 'boolean') return false;
   if (s.revealed !== undefined) {
+    // Títulos de Spotify pueden ser muy largos (obras clásicas): límites holgados,
+    // sólo para frenar basura. Rechazar acá congelaría a todos los celulares.
     const r = s.revealed;
-    if (!isObj(r) || !isStr(r.name, 300) || !isStr(r.artists, 300) || !isStr(r.album, 300) || !optStr(r.image, 1000)) return false;
+    if (!isObj(r) || !isStr(r.name, TEXT_MAX) || !isStr(r.artists, TEXT_MAX) || !isStr(r.album, TEXT_MAX) || !optStr(r.image, TEXT_MAX)) return false;
   }
   if (s.lastEvent !== undefined) {
     const e = s.lastEvent;
