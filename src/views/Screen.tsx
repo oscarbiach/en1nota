@@ -68,7 +68,7 @@ export function ScreenView({ room }: { room: string }) {
 
       <main>
         {status !== 'joined' && status !== 'connecting' ? (
-          <div className="huge muted">{status === 'no_room' ? 'Sala inexistente' : status === 'host_gone' ? 'Esperando al juez…' : 'Sala cerrada'}</div>
+          <div className="huge muted">{status === 'no_room' ? 'Sala inexistente' : status === 'host_gone' ? 'Esperando al juez…' : status === 'offline' ? 'Reconectando…' : status === 'replaced' ? 'Esta pantalla se abrió en otro lado' : 'Sala cerrada'}</div>
         ) : !state || state.phase === 'lobby' ? (
           <div className="col" style={{ alignItems: 'center' }}>
             <div className="huge">Sumate con tu celu</div>

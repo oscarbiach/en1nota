@@ -1,10 +1,13 @@
 // WebSocket con reconexión y reloj sincronizado con el servidor.
 // Todos (juez y jugadores) comparan pulsaciones en "hora del servidor":
 // offset = mediana de (s - (c + rtt/2)) sobre varios pings.
-import type { ServerMsg } from './protocol';
-import { wsUrl } from './protocol';
+import type { ServerMsg } from './protocol.ts';
+import { wsUrl } from './protocol.ts';
 
 type Listener = (m: ServerMsg) => void;
+
+/** El servidor cierra con 4000+ cuando la conexión fue reemplazada o expulsada: no reconectar. */
+const FINAL_CLOSE_CODES = 4000;
 
 export class Socket {
   private ws?: WebSocket;
@@ -14,6 +17,8 @@ export class Socket {
   private retry = 0;
   private samples: number[] = [];
   private pingTimer?: number;
+  private retryTimer?: number;
+  private burstTimer?: number;
   offset = 0; // serverNow ≈ Date.now() + offset
   rtt = 0;
   online = false;
@@ -25,9 +30,14 @@ export class Socket {
   }
 
   private open() {
+    if (this.closed) return;
     const ws = new WebSocket(wsUrl());
     this.ws = ws;
+    // Cada callback comprueba que su socket siga siendo el vigente: un socket
+    // anterior (o uno cerrado por close()) nunca llega a las vistas.
+    const current = () => !this.closed && this.ws === ws;
     ws.onopen = () => {
+      if (!current()) return;
       this.retry = 0;
       this.online = true;
       this.onOnline?.(true);
@@ -36,25 +46,41 @@ export class Socket {
       this.openHandlers.forEach((h) => h());
     };
     ws.onmessage = (ev) => {
+      if (!current()) return;
       let m: ServerMsg;
       try { m = JSON.parse(ev.data); } catch { return; }
-      if (m.t === 'pong') { this.onPong(m.c, m.s); return; }
+      if (!m || typeof m !== 'object' || typeof (m as { t?: unknown }).t !== 'string') return;
+      if (m.t === 'pong') { if (typeof m.c === 'number' && typeof m.s === 'number') this.onPong(m.c, m.s); return; }
       this.listeners.forEach((l) => l(m));
     };
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
+      if (!current()) return;
+      this.stopTimers();
       this.online = false;
       this.onOnline?.(false);
-      clearInterval(this.pingTimer);
-      if (this.closed) return;
+      if (ev.code >= FINAL_CLOSE_CODES) { this.closed = true; return; }
       const wait = Math.min(8000, 500 * 2 ** this.retry++);
-      setTimeout(() => this.open(), wait);
+      this.retryTimer = window.setTimeout(() => {
+        this.retryTimer = undefined;
+        this.open();
+      }, wait);
     };
     ws.onerror = () => ws.close();
   }
 
+  private stopTimers() {
+    clearInterval(this.pingTimer);
+    clearTimeout(this.burstTimer);
+    clearTimeout(this.retryTimer);
+    this.pingTimer = this.burstTimer = this.retryTimer = undefined;
+  }
+
   private syncClock() {
     let n = 0;
-    const burst = () => { this.ping(); if (++n < 6) setTimeout(burst, 150); };
+    const burst = () => {
+      this.ping();
+      if (++n < 6) this.burstTimer = window.setTimeout(burst, 150);
+    };
     burst();
     clearInterval(this.pingTimer);
     this.pingTimer = window.setInterval(() => this.ping(), 10000);
@@ -80,7 +106,7 @@ export class Socket {
   }
 
   raw(obj: unknown) {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(obj));
+    if (!this.closed && this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(obj));
   }
 
   on(l: Listener) {
@@ -96,7 +122,10 @@ export class Socket {
 
   close() {
     this.closed = true;
-    clearInterval(this.pingTimer);
-    this.ws?.close();
+    this.online = false;
+    this.stopTimers();
+    const ws = this.ws;
+    this.ws = undefined;
+    try { ws?.close(); } catch { /* ya cerrado */ }
   }
 }

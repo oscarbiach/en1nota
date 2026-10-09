@@ -18,7 +18,8 @@ export type SfxName = 'buzz' | 'correct' | 'wrong' | 'hum' | 'reveal' | 'start' 
 export type ServerMsg =
   | { t: 'pong'; c: number; s: number }
   | { t: 'hosted'; room: string; key: string; peers: PeerInfo[] }
-  | { t: 'joined'; room: string; pid: string; hostOnline: boolean }
+  /** `secret` autoriza a retomar `pid` al reconectar; nunca se comparte. */
+  | { t: 'joined'; room: string; pid: string; secret: string; hostOnline: boolean }
   | { t: 'peer'; pid: string; role: 'player' | 'screen'; name: string; connected: boolean }
   | { t: 'msg'; from?: string; data: PeerMsg | HostMsg; at?: number }
   | { t: 'error'; code: string }

@@ -50,8 +50,13 @@ export function canBuzz(g: GameState, playerId: string): boolean {
 
 // ---------- jugadores ----------
 
+/** Los nombres pueden venir de la red: cualquier cosa que no sea texto cuenta como vacío. */
+function cleanName(name: unknown): string {
+  return typeof name === 'string' ? name.trim().slice(0, 24) : '';
+}
+
 export function addPlayer(g: GameState, name: string, id = newId()): GameState {
-  const clean = name.trim().slice(0, 24) || `Jugador ${g.players.length + 1}`;
+  const clean = cleanName(name) || `Jugador ${g.players.length + 1}`;
   const used = new Set(g.players.map((p) => p.color));
   const color = PLAYER_COLORS.find((c) => !used.has(c)) ?? PLAYER_COLORS[g.players.length % PLAYER_COLORS.length];
   const player: Player = { id, name: clean, color, score: 0, connected: true, key: String(g.players.length + 1) };
@@ -63,7 +68,7 @@ export function removePlayer(g: GameState, id: string): GameState {
 }
 
 export function renamePlayer(g: GameState, id: string, name: string): GameState {
-  return { ...g, players: g.players.map((p) => (p.id === id ? { ...p, name: name.trim().slice(0, 24) || p.name } : p)) };
+  return { ...g, players: g.players.map((p) => (p.id === id ? { ...p, name: cleanName(name) || p.name } : p)) };
 }
 
 export function setConnected(g: GameState, id: string, connected: boolean): GameState {

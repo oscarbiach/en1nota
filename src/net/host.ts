@@ -1,7 +1,8 @@
 // Lado juez de la sala: crea/retoma la sala, recibe pulsaciones y difunde el estado público.
 import { Socket } from './socket';
-import type { HostMsg, PeerInfo, PeerMsg, SfxName } from './protocol';
+import type { HostMsg, PeerInfo, SfxName } from './protocol';
 import type { PublicState } from '../game/types';
+import { parsePeerMsg } from './validate';
 
 const KEY_ROOM = 'en1nota.room';
 
@@ -12,6 +13,8 @@ export interface HostEvents {
   onRename: (pid: string, name: string) => void;
   onBuzz: (pid: string, at: number) => void;
   onOnline: (online: boolean) => void;
+  /** Otra pestaña o dispositivo tomó esta sala con su clave. */
+  onReplaced: () => void;
 }
 
 export class HostConnection {
@@ -42,14 +45,19 @@ export class HostConnection {
           this.ev.onPeer(m);
           if (m.connected && this.lastState) this.sendTo(m.pid, { k: 'state', state: this.lastState, serverNow: this.socket.serverNow() });
           break;
+        case 'host_replaced':
+          // El servidor ya no acepta nada de esta conexión: no reintentar.
+          this.socket.close();
+          this.ev.onReplaced();
+          break;
         case 'msg': {
-          const d = m.data as PeerMsg;
-          if (!m.from) break;
+          const d = parsePeerMsg(m.data);
+          if (!d || typeof m.from !== 'string') break;
           if (d.k === 'hello') this.ev.onHello(m.from, d.role, d.name);
           else if (d.k === 'rename') this.ev.onRename(m.from, d.name);
           else if (d.k === 'buzz') {
             // Preferimos el reloj sincronizado del jugador; si parece roto, usamos la llegada al servidor.
-            const arrival = m.at ?? this.socket.serverNow();
+            const arrival = typeof m.at === 'number' ? m.at : this.socket.serverNow();
             const at = Number.isFinite(d.at) && Math.abs(d.at - arrival) < 2000 ? d.at : arrival;
             this.ev.onBuzz(m.from, at);
           }

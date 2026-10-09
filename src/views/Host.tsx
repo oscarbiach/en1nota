@@ -49,6 +49,7 @@ export function Host({ authError }: { authError?: string }) {
   const [playerStatus, setPlayerStatus] = useState('Sin reproductor');
   const [localSfx, setLocalSfx] = useState(true);
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
+  const [replaced, setReplaced] = useState(false);
   const buzzTimer = useRef<number>(undefined);
   const connRef = useRef<HostConnection>(null);
 
@@ -61,6 +62,7 @@ export function Host({ authError }: { authError?: string }) {
     const c = new HostConnection({
       onRoom: setRoom,
       onOnline: setOnline,
+      onReplaced: () => setReplaced(true),
       onPeer: (p) => {
         setPeers((m) => new Map(m).set(p.pid, p));
         setGame((g) => (g.players.some((x) => x.id === p.pid) ? E.setConnected(g, p.pid, p.connected) : g));
@@ -154,6 +156,18 @@ export function Host({ authError }: { authError?: string }) {
   };
 
   const setTracks = (tracks: Track[]) => update((g) => ({ ...g, tracks }));
+
+  if (replaced) {
+    return (
+      <div className="overlay">
+        <div className="card" style={{ maxWidth: 460 }}>
+          <h2>La sala se abrió en otro lado</h2>
+          <p className="muted">Este panel del juez se abrió en otra pestaña o dispositivo, y la sala {room} ahora se maneja desde ahí. Esta pestaña ya no controla la partida.</p>
+          <button className="btn primary block" onClick={() => location.reload()}>Retomar la sala acá</button>
+        </div>
+      </div>
+    );
+  }
 
   if (game.phase === 'lobby') return <HostSetup ctx={ctx} setTracks={setTracks} authError={authError} />;
 

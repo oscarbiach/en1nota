@@ -14,6 +14,7 @@ const STATUS_TEXT: Record<PeerStatus, string> = {
   host_gone: 'El juez se desconectó, esperando…',
   kicked: 'El juez te sacó de la sala.',
   closed: 'La sala se cerró.',
+  replaced: 'Abriste este pulsador en otra pestaña o dispositivo. Seguí jugando desde ahí.',
   offline: 'Sin conexión, reintentando…'
 };
 

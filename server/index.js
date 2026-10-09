@@ -8,11 +8,15 @@ import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import express from 'express';
 import { WebSocketServer } from 'ws';
+import { cleanName, cleanRoom, hostData, isId, isKey, isSecret, peerData } from './validate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
 const DIST = path.join(__dirname, '..', 'dist');
 const ROOM_TTL_MS = 10 * 60 * 1000; // sala viva 10 min sin juez
+const MAX_PAYLOAD = 64 * 1024; // un estado público con 8 jugadores ocupa ~3 KB
+/** Código de cierre para conexiones reemplazadas: el cliente no debe reconectar. */
+const CLOSE_REPLACED = 4001;
 
 const app = express();
 app.get('/healthz', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
@@ -20,9 +24,13 @@ app.use(express.static(DIST, { index: 'index.html', maxAge: '1h' }));
 app.get(/.*/, (_req, res) => res.sendFile(path.join(DIST, 'index.html')));
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({ server, path: '/ws', maxPayload: MAX_PAYLOAD });
 
-/** @type {Map<string, {code:string, key:string, host:import('ws').WebSocket|null, peers:Map<string, {ws:import('ws').WebSocket|null, role:string, name:string}>, expiry:NodeJS.Timeout|null}>} */
+/**
+ * `pid` es público (viaja en el estado de la partida); `secret` sólo lo
+ * conoce la conexión que lo recibió y es lo que autoriza a retomar ese pid.
+ * @type {Map<string, {code:string, key:string, host:import('ws').WebSocket|null, peers:Map<string, {ws:import('ws').WebSocket|null, role:string, name:string, secret:string}>, expiry:NodeJS.Timeout|null}>}
+ */
 const rooms = new Map();
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // sin I ni O para no confundir
@@ -44,6 +52,19 @@ function roster(room) {
   }));
 }
 
+function safeEqual(a, b) {
+  const x = Buffer.from(String(a));
+  const y = Buffer.from(String(b));
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+
+/** Avisa a una conexión desplazada y la cierra: deja de tener autoridad. */
+function revoke(ws, t) {
+  if (!ws) return;
+  send(ws, { t });
+  try { ws.close(CLOSE_REPLACED, t); } catch { /* ya cerrada */ }
+}
+
 function armExpiry(room) {
   if (room.expiry) clearTimeout(room.expiry);
   room.expiry = setTimeout(() => {
@@ -57,27 +78,47 @@ wss.on('connection', (ws) => {
   const me = {};
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
+  // Sin este handler, un error de protocolo de UN cliente (p. ej. un mensaje
+  // que excede maxPayload) es un 'error' sin escuchar y termina el proceso.
+  // ws ya cierra esa conexión; acá sólo evitamos que caiga el servidor.
+  ws.on('error', () => {});
+
+  /** Sala de esta conexión sólo si sigue siendo su juez vigente. */
+  const hostRoom = () => {
+    const room = me.room && me.isHost ? rooms.get(me.room) : undefined;
+    return room && room.host === ws ? room : undefined;
+  };
+  /** Sala y registro de esta conexión sólo si sigue siendo la dueña de su pid. */
+  const peerEntry = () => {
+    const room = me.room && !me.isHost ? rooms.get(me.room) : undefined;
+    const p = room && me.pid ? room.peers.get(me.pid) : undefined;
+    return room && p && p.ws === ws ? { room, p } : undefined;
+  };
 
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
-    if (!msg || typeof msg.t !== 'string') return;
+    if (!msg || typeof msg !== 'object' || typeof msg.t !== 'string') return;
 
     switch (msg.t) {
       case 'ping':
-        send(ws, { t: 'pong', c: msg.c, s: Date.now() });
+        send(ws, { t: 'pong', c: typeof msg.c === 'number' && Number.isFinite(msg.c) ? msg.c : 0, s: Date.now() });
         return;
 
       case 'host': {
+        // Una conexión tiene un único rol y una única sala durante su vida.
+        if (me.room) { send(ws, { t: 'error', code: 'already_bound' }); return; }
         // Crea una sala nueva o retoma una existente con su clave.
-        let room = msg.room && rooms.get(String(msg.room).toUpperCase());
-        if (room && room.key !== msg.key) { send(ws, { t: 'error', code: 'bad_key' }); return; }
+        const code = cleanRoom(msg.room);
+        let room = code ? rooms.get(code) : undefined;
+        if (room && !(isKey(msg.key) && safeEqual(room.key, msg.key))) { send(ws, { t: 'error', code: 'bad_key' }); return; }
         if (!room) {
           room = { code: newCode(), key: crypto.randomBytes(12).toString('hex'), host: null, peers: new Map(), expiry: null };
           rooms.set(room.code, room);
         }
-        if (room.host && room.host !== ws) send(room.host, { t: 'host_replaced' });
+        const prev = room.host;
         room.host = ws;
+        if (prev && prev !== ws) revoke(prev, 'host_replaced');
         if (room.expiry) { clearTimeout(room.expiry); room.expiry = null; }
         me.room = room.code; me.isHost = true;
         send(ws, { t: 'hosted', room: room.code, key: room.key, peers: roster(room) });
@@ -86,49 +127,60 @@ wss.on('connection', (ws) => {
       }
 
       case 'join': {
-        const room = rooms.get(String(msg.room || '').toUpperCase());
+        if (me.room) { send(ws, { t: 'error', code: 'already_bound' }); return; }
+        const code = cleanRoom(msg.room);
+        const room = code ? rooms.get(code) : undefined;
         if (!room) { send(ws, { t: 'error', code: 'no_room' }); return; }
         const role = msg.role === 'screen' ? 'screen' : 'player';
-        let pid = typeof msg.pid === 'string' && room.peers.has(msg.pid) ? msg.pid : null;
-        if (!pid) pid = crypto.randomBytes(6).toString('hex');
-        const prev = room.peers.get(pid);
-        if (prev && prev.ws && prev.ws !== ws) send(prev.ws, { t: 'replaced' });
-        const name = String(msg.name || prev?.name || '').slice(0, 24);
-        room.peers.set(pid, { ws, role, name });
+        // Retomar un pid exige su secreto; si no coincide, es otra identidad.
+        const known = isId(msg.pid) ? room.peers.get(msg.pid) : undefined;
+        const resume = known && known.role === role && isSecret(msg.secret) && safeEqual(known.secret, msg.secret);
+        const pid = resume ? msg.pid : crypto.randomBytes(6).toString('hex');
+        const secret = resume ? known.secret : crypto.randomBytes(16).toString('hex');
+        const prevWs = resume ? known.ws : null;
+        const name = cleanName(msg.name) || (resume ? known.name : '');
+        room.peers.set(pid, { ws, role, name, secret });
+        if (prevWs && prevWs !== ws) revoke(prevWs, 'replaced');
         me.room = room.code; me.pid = pid; me.isHost = false;
-        send(ws, { t: 'joined', room: room.code, pid, hostOnline: !!room.host });
+        send(ws, { t: 'joined', room: room.code, pid, secret, hostOnline: !!room.host });
         send(room.host, { t: 'peer', pid, role, name, connected: true });
         return;
       }
 
       case 'msg': {
-        const room = me.room && rooms.get(me.room);
-        if (!room) return;
-        if (me.isHost) {
+        const room = hostRoom();
+        if (room) {
+          const data = hostData(msg.data);
+          if (!data) return;
           if (msg.to === 'all') {
-            for (const p of room.peers.values()) send(p.ws, { t: 'msg', data: msg.data });
-          } else if (typeof msg.to === 'string') {
+            for (const p of room.peers.values()) send(p.ws, { t: 'msg', data });
+          } else if (isId(msg.to)) {
             const p = room.peers.get(msg.to);
-            if (p) send(p.ws, { t: 'msg', data: msg.data });
+            if (p) send(p.ws, { t: 'msg', data });
           }
-        } else {
-          send(room.host, { t: 'msg', from: me.pid, data: msg.data, at: Date.now() });
+          return;
         }
+        const entry = peerEntry();
+        if (!entry) return;
+        const data = peerData(msg.data, entry.p.role);
+        if (!data) return;
+        send(entry.room.host, { t: 'msg', from: me.pid, data, at: Date.now() });
         return;
       }
 
       case 'kick': {
-        const room = me.room && rooms.get(me.room);
-        if (!room || !me.isHost) return;
+        const room = hostRoom();
+        if (!room || !isId(msg.pid)) return;
         const p = room.peers.get(msg.pid);
-        if (p) { send(p.ws, { t: 'kicked' }); room.peers.delete(msg.pid); try { p.ws?.close(); } catch {} }
+        if (p) { room.peers.delete(msg.pid); revoke(p.ws, 'kicked'); }
         return;
       }
 
       case 'close_room': {
-        const room = me.room && rooms.get(me.room);
-        if (!room || !me.isHost) return;
+        const room = hostRoom();
+        if (!room) return;
         for (const p of room.peers.values()) send(p.ws, { t: 'room_closed' });
+        if (room.expiry) clearTimeout(room.expiry);
         rooms.delete(room.code);
         return;
       }

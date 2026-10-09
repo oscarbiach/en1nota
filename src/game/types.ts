@@ -107,6 +107,14 @@ export interface PublicState {
   lastEvent?: RoundEvent;
   finished: boolean;
   awards?: Array<{ k: string; v: string; sub: string }>;
+  /** Resultado final calculado por el motor: la TV lo muestra tal cual. */
+  final?: FinalResult;
+}
+
+/** Ranking con posiciones compartidas en caso de empate (1, 1, 3…). */
+export interface FinalResult {
+  ranking: Array<{ id: string; position: number; score: number; correct: number }>;
+  winnerIds: string[];
 }
 
 export const PLAYER_COLORS = [
