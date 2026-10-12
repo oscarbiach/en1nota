@@ -1,0 +1,10 @@
+[e2e] reproductor manual activo
+[e2e] sala NEES
+[e2e] jugador Beto conectado
+[e2e] TV muestra QR y código
+[e2e] partida empezada
+[e2e] Beto tiene la palabra
+[e2e] ronda 1 ok, revelada en TV y celu
+[e2e] podio TV: 🏆Beto01 aciertos | 2ºAna-10 aciertos
+[e2e] historial ok
+E2E OK

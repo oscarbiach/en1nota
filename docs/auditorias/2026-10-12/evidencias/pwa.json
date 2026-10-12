@@ -1,0 +1,12 @@
+{
+  "beforePhase": "playing",
+  "beforeScores": [
+    1
+  ],
+  "bannerShown": true,
+  "sameGame": true,
+  "sameScores": true,
+  "phase": "open",
+  "sonarEnabled": true,
+  "controllerActive": true
+}

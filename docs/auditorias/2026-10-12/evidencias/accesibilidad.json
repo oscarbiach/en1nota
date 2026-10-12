@@ -1,0 +1,46 @@
+[
+  {
+    "name": "Inicio",
+    "violations": [
+      {
+        "id": "meta-viewport",
+        "impact": "moderate",
+        "description": "Ensure <meta name=\"viewport\"> does not disable text scaling and zooming",
+        "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/meta-viewport?application=axeAPI",
+        "nodes": [
+          {
+            "target": [
+              "meta[name=\"viewport\"]"
+            ],
+            "summary": "Fix any of the following:\n  user-scalable=no on <meta> tag disables zooming on mobile devices"
+          }
+        ]
+      }
+    ],
+    "incomplete": [
+      "color-contrast"
+    ]
+  },
+  {
+    "name": "Spotify",
+    "violations": [
+      {
+        "id": "meta-viewport",
+        "impact": "moderate",
+        "description": "Ensure <meta name=\"viewport\"> does not disable text scaling and zooming",
+        "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/meta-viewport?application=axeAPI",
+        "nodes": [
+          {
+            "target": [
+              "meta[name=\"viewport\"]"
+            ],
+            "summary": "Fix any of the following:\n  user-scalable=no on <meta> tag disables zooming on mobile devices"
+          }
+        ]
+      }
+    ],
+    "incomplete": [
+      "color-contrast"
+    ]
+  }
+]

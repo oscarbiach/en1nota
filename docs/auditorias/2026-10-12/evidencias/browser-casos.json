@@ -1,0 +1,8 @@
+{
+  "origen": "Resultados registrados en la consola de audit2-browser.mjs durante esta auditoría",
+  "casos": [
+    {"id":"B02","name":"Timestamp manipulado gana aunque llega después","winner":"Segundo","reaction":0},
+    {"id":"B06","name":"Partida guardada con esquema inválido no se recupera","stillBrokenAfterReload":true},
+    {"id":"R02","name":"Fallo de Spotify Connect vuelve a fase operable (API simulada)","phase":"open","sonarEnabled":true}
+  ]
+}

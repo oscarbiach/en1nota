@@ -1,0 +1,24 @@
+[
+  {
+    "id": "B01",
+    "name": "SDK acepta evento de otro tema",
+    "resolvedWithWrongTrack": true
+  },
+  {
+    "id": "B05",
+    "name": "Playlist con episodio",
+    "error": "Cannot read properties of undefined (reading 'map')"
+  },
+  {
+    "id": "B04",
+    "name": "Cuota de almacenamiento agotada",
+    "errorCommunicated": false,
+    "saved": false
+  },
+  {
+    "id": "B03",
+    "name": "Reloj servidor 5 segundos adelantado",
+    "actualReactionMs": 300,
+    "reportedReactionMs": 5300
+  }
+]

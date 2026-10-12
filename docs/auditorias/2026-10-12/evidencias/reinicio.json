@@ -1,0 +1,8 @@
+{
+  "id": "B09",
+  "oldRoom": "NACU",
+  "newRoom": "DNMP",
+  "phase": "ready",
+  "playerText": "…\nEsa sala no existe. Revisá el código.",
+  "joinNewRoom": "Sin lugar\nLa partida ya empezó"
+}

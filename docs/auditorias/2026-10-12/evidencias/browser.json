@@ -1,0 +1,26 @@
+[
+  {
+    "id": "B07",
+    "name": "Accesibilidad automatizada",
+    "scans": [
+      {
+        "page": "Inicio",
+        "violations": [
+          {
+            "id": "meta-viewport",
+            "nodes": 1
+          }
+        ]
+      },
+      {
+        "page": "Spotify",
+        "violations": [
+          {
+            "id": "meta-viewport",
+            "nodes": 1
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,9 @@
+import {spawn} from 'node:child_process';
+import {chromium} from 'playwright';
+import {writeFileSync,mkdirSync} from 'node:fs';
+process.env.BASE='http://127.0.0.1:8793';
+const {openJudge,openPlayer,addTracks,start,gameState}=await import('./helpers.mjs');
+const output=process.env.AUDIT_OUT??'audit-output/segunda-auditoria';mkdirSync(output,{recursive:true});
+let server;async function boot(){server=spawn(process.execPath,['server/index.js'],{env:{...process.env,PORT:'8793'},windowsHide:true,stdio:['ignore','pipe','pipe']});await new Promise((r,j)=>{server.stdout.on('data',d=>{if(String(d).includes('escuchando'))r();});server.once('error',j);});}async function stop(){await new Promise(r=>{server.once('exit',r);server.kill();});}
+const browser=await chromium.launch({channel:'msedge'});const result={id:'B09'};
+try{await boot();const j=await openJudge(browser);const p=await openPlayer(browser,j.room,'Ana');await p.page.getByText('Esperando que arranque la partida').waitFor();await addTracks(j.page,['Tema']);await start(j.page);result.oldRoom=j.room;await stop();await boot();await j.page.waitForTimeout(1600);result.newRoom=await j.page.evaluate(()=>JSON.parse(sessionStorage.getItem('en1nota.room')).room);result.phase=(await gameState(j.page)).phase;result.playerText=await p.page.locator('.bigbtn').innerText();await p.page.goto(process.env.BASE+`/#/jugar?sala=${result.newRoom}`);await p.page.getByText('La partida ya empezó',{exact:true}).waitFor({timeout:6000});result.joinNewRoom=await p.page.locator('.bigbtn').innerText();await p.page.screenshot({path:`${output}/reinicio-servidor.png`});}catch(e){result.testError=e.message;}finally{await browser.close();if(server)await stop();writeFileSync(`${output}/reinicio.json`,JSON.stringify(result,null,2));console.log(JSON.stringify(result));}
