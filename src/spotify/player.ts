@@ -9,10 +9,15 @@
 // Todos cumplen el contrato de run.ts: cada operación termina siempre, y una
 // nueva (o stop) cancela la anterior.
 import { getAccessToken } from './auth.ts';
-import { devices, pauseRemote, playUri, transferTo, type Device } from './api.ts';
-import { Runner, runSnippet, type Op, type SnippetResult } from './run.ts';
+import { SpotifyError, devices, pauseRemote, playUri, transferTo, type Device } from './api.ts';
+import { Cancelled, Runner, runSnippet, type Op, type SnippetResult } from './run.ts';
 
 export { ManualPlayer } from './manual.ts';
+
+/** Cuánto esperamos la confirmación del SDK antes de contar el fragmento desde la orden. */
+const CONFIRM_MS = 2000;
+
+const isDeviceNotFound = (e: unknown) => e instanceof SpotifyError && e.status === 404;
 
 export type PlayerMode = 'sdk' | 'connect' | 'manual';
 
@@ -78,7 +83,9 @@ export class SdkPlayer implements SnippetPlayer {
       player.addListener(ev, (e) => this.onStatus?.(`${ev}: ${e.message}`));
     }
     const readyP = new Promise<string>((resolve, reject) => {
-      player.addListener('ready', ({ device_id }) => resolve(device_id));
+      // Spotify puede volver a mandar 'ready' con otro device_id si reconecta:
+      // siempre usamos el último.
+      player.addListener('ready', ({ device_id }) => { this.deviceId = device_id; this.ready = true; resolve(device_id); });
       player.addListener('not_ready', () => { this.ready = false; });
       setTimeout(() => reject(new Error('El SDK no se conectó a tiempo')), 15000);
     });
@@ -118,7 +125,7 @@ export class SdkPlayer implements SnippetPlayer {
         const nearStart = s.position >= startMs - 1500 && s.position <= startMs + 4000;
         if (!s.paused && sameTrack && nearStart) { done(); resolve(s); }
       };
-      const t = setTimeout(() => { done(); reject(new Error('Spotify no arrancó a reproducir')); }, timeoutMs);
+      const t = setTimeout(() => { done(); reject(new Error('Spotify no confirmó la reproducción')); }, timeoutMs);
       const off = op.onCancel(done);
       this.stateWaiters.push(check);
     });
@@ -129,41 +136,80 @@ export class SdkPlayer implements SnippetPlayer {
     return this.stateWaiters.length;
   }
 
+  /**
+   * Manda reproducir en este navegador. Si Spotify todavía no ve el
+   * dispositivo ("Device not found": pasa justo después de activarlo, o si
+   * se desconectó), le transfiere la reproducción y reintenta; al segundo
+   * fallo reconecta el SDK (nuevo dispositivo) y reintenta una vez más.
+   */
+  private async startPlayback(uri: string, startMs: number, op: Op) {
+    for (let attempt = 0; ; attempt++) {
+      if (!this.deviceId) throw new Error('El reproductor del navegador no está conectado. Tocá "Reactivar" en el panel Reproductor.');
+      try {
+        await op.wait(playUri(this.deviceId, uri, startMs));
+        return;
+      } catch (e) {
+        if (!isDeviceNotFound(e)) throw e;
+        if (attempt >= 2) throw new Error('Spotify no encuentra el reproductor de este navegador (Device not found). Tocá "Reactivar" en el panel Reproductor; si sigue, cerrá la app de Spotify en otros dispositivos y recargá.');
+        if (attempt === 0) { try { await op.wait(transferTo(this.deviceId, false)); } catch { /* reintentamos igual */ } }
+        else await op.wait(this.reconnect());
+        await op.sleep(700);
+      }
+    }
+  }
+
+  /** Desconecta y vuelve a conectar el SDK: Spotify le da un dispositivo nuevo. */
+  private async reconnect() {
+    this.player?.disconnect();
+    this.player = undefined;
+    this.ready = false;
+    this.deviceId = undefined;
+    await this.init();
+  }
+
+  /**
+   * Corta el audio. Primero el SDK (inmediato, en este navegador); después,
+   * por la API de Spotify, el dispositivo activo de la cuenta: si el audio
+   * terminó sonando en otro lado, también se corta.
+   */
+  private async pauseEverywhere() {
+    try { await this.player?.pause(); } catch { /* ya pausado */ }
+    try { await pauseRemote(); } catch { /* sin dispositivo activo o ya pausado */ }
+  }
+
   async play(uri: string, startMs: number, maxMs?: number) {
     if (!this.ready || !this.player) throw new Error('Reproductor no inicializado');
-    const player = this.player;
     const op = this.runner.begin();
     await runSnippet(async () => {
-      const playing = this.waitPlaying(uri, startMs, op);
-      playing.catch(() => {}); // si play falla, el error que importa es ése
-      await op.wait(playUri(this.deviceId, uri, startMs));
-      await op.wait(playing);
+      await this.startPlayback(uri, startMs, op);
       if (!maxMs) return;
       await op.sleep(maxMs);
-      await player.pause();
+      await this.pauseEverywhere();
     });
   }
 
   playSnippet(uri: string, startMs: number, lenMs: number) {
     if (!this.ready || !this.player) return Promise.reject(new Error('Reproductor no inicializado'));
-    const player = this.player;
     const op = this.runner.begin();
     return runSnippet(async () => {
       // La espera se registra antes del play: el evento puede llegar enseguida.
-      const playing = this.waitPlaying(uri, startMs, op);
+      const playing = this.waitPlaying(uri, startMs, op, CONFIRM_MS);
       playing.catch(() => {}); // si play falla, el error que importa es ése
-      await op.wait(playUri(this.deviceId, uri, startMs));
-      const s = await op.wait(playing);
-      // Compensamos lo que ya avanzó entre que arrancó y nos enteramos.
-      const already = Math.max(0, s.position - startMs);
-      await op.sleep(Math.max(0, lenMs - already));
-      await player.pause();
+      await this.startPlayback(uri, startMs, op);
+      const sentAt = performance.now();
+      // Con la confirmación del SDK, descontamos lo que ya sonó. Sin ella
+      // (el audio pudo ir a otro dispositivo), contamos desde la orden: el
+      // fragmento se corta igual a tiempo.
+      const s = await op.wait(playing.catch((e) => (e instanceof Cancelled ? Promise.reject(e) : null)));
+      const elapsed = s ? Math.max(0, s.position - startMs) : performance.now() - sentAt;
+      await op.sleep(Math.max(0, lenMs - elapsed));
+      await this.pauseEverywhere();
     });
   }
 
   async stop() {
     this.runner.cancel();
-    try { await this.player?.pause(); } catch { /* ya pausado */ }
+    await this.pauseEverywhere();
   }
 
   destroy() {
@@ -208,10 +254,29 @@ export class ConnectPlayer implements SnippetPlayer {
     this.onStatus?.(`Controlando: ${this.device?.name}`);
   }
 
+  /**
+   * Manda reproducir en el dispositivo elegido. Si Spotify ya no lo
+   * encuentra (la app se cerró o cambió de id), busca de nuevo: el activo,
+   * o el de mismo nombre, o el primero, y reintenta una vez.
+   */
+  private async startPlayback(uri: string, startMs: number, op: Op) {
+    try {
+      await op.wait(playUri(this.deviceId, uri, startMs));
+    } catch (e) {
+      if (!isDeviceNotFound(e)) throw e;
+      const ds = await op.wait(devices());
+      const d = ds.find((x) => x.is_active) ?? ds.find((x) => x.name === this.device?.name) ?? ds[0];
+      if (!d) throw new Error('Spotify no encuentra ningún dispositivo (Device not found). Abrí la app de Spotify en el celular o la compu y tocá "Reactivar".');
+      this.setDevice(d);
+      this.onStatus?.(`Controlando: ${d.name}`);
+      await op.wait(playUri(this.deviceId, uri, startMs));
+    }
+  }
+
   async play(uri: string, startMs: number, maxMs?: number) {
     const op = this.runner.begin();
     await runSnippet(async () => {
-      await op.wait(playUri(this.deviceId, uri, startMs));
+      await this.startPlayback(uri, startMs, op);
       if (!maxMs) return;
       await op.sleep(maxMs);
       await pauseRemote(this.deviceId);
@@ -222,7 +287,7 @@ export class ConnectPlayer implements SnippetPlayer {
     const op = this.runner.begin();
     return runSnippet(async () => {
       const t0 = performance.now();
-      await op.wait(playUri(this.deviceId, uri, startMs));
+      await this.startPlayback(uri, startMs, op);
       this.lastPlayLatency = performance.now() - t0;
       // Suponemos que el pause tarda parecido al play: lo mandamos antes.
       await op.sleep(Math.max(0, lenMs - this.lastPlayLatency * 0.5));

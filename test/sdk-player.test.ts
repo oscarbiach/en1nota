@@ -10,7 +10,14 @@ g.window = globalThis;
 g.localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => mem.set(k, v), removeItem: (k: string) => mem.delete(k) };
 mem.set('en1nota.spotify.token', JSON.stringify({ accessToken: 'FICTICIO', expiresAt: Date.now() + 3_600_000 }));
 const calls: string[] = [];
-g.fetch = async (url: string) => { calls.push(String(url)); return new Response(null, { status: 204 }); };
+/** Respuesta de la API simulada; por defecto todo OK (204). */
+let respond: (url: string, method: string) => Response = () => new Response(null, { status: 204 });
+g.fetch = async (url: string, init: RequestInit = {}) => {
+  const method = init.method ?? 'GET';
+  calls.push(`${method} ${String(url).replace('https://api.spotify.com/v1', '')}`);
+  return respond(String(url), method);
+};
+const deviceNotFound = () => new Response(JSON.stringify({ error: { status: 404, message: 'Device not found' } }), { status: 404 });
 
 const { SdkPlayer } = await import('../src/spotify/player.ts');
 
@@ -33,6 +40,7 @@ function ready() {
 
 beforeEach(() => {
   calls.length = 0;
+  respond = () => new Response(null, { status: 204 });
   mock.timers.reset();
   mock.timers.enable({ apis: ['setTimeout'] });
 });
@@ -98,12 +106,53 @@ test('B01: cancelar libera la espera', async () => {
   assert.equal(p.pendingWaits, 0);
 });
 
-test('B01: si Spotify no arranca, vence con error y libera la espera', async () => {
-  const { p } = ready();
+test('sin confirmación del SDK, el fragmento se corta igual a tiempo y se pausa también por la API', async () => {
+  const { p, pauses } = ready();
   const s = track(p.playSnippet('spotify:track:x', 0, 400));
   await flush();
-  mock.timers.tick(6000);
+  mock.timers.tick(2000); // no llega ningún evento del SDK
   await flush();
-  assert.match(String(s.error), /no arrancó/);
+  assert.equal(s.done, false, 'todavía falta el fragmento');
+  mock.timers.tick(400);
+  await flush();
+  assert.equal(s.value, 'done');
+  assert.equal(pauses(), 1);
+  assert.ok(calls.includes('PUT /me/player/pause'), 'pausa el dispositivo activo de la cuenta, esté donde esté');
+  assert.equal(p.pendingWaits, 0);
+});
+
+test('"Parar" pausa el navegador y el dispositivo activo de la cuenta', async () => {
+  const { p, pauses } = ready();
+  await p.stop();
+  assert.equal(pauses(), 1);
+  assert.ok(calls.includes('PUT /me/player/pause'));
+});
+
+test('Device not found: transfiere la reproducción al navegador y reintenta', async () => {
+  const { p } = ready();
+  let plays = 0;
+  respond = (url, method) => (method === 'PUT' && url.includes('/me/player/play') && plays++ === 0 ? deviceNotFound() : new Response(null, { status: 204 }));
+  const s = track(p.playSnippet('spotify:track:x', 0, 400));
+  await flush();
+  mock.timers.tick(700);
+  await flush();
+  p.handleState(state('spotify:track:x', 10) as never);
+  await flush();
+  mock.timers.tick(400);
+  await flush();
+  assert.equal(s.value, 'done');
+  assert.deepEqual(calls.filter((c) => !c.includes('pause')), ['PUT /me/player/play?device_id=dev', 'PUT /me/player', 'PUT /me/player/play?device_id=dev']);
+});
+
+test('Device not found persistente: reconecta el SDK y, si no alcanza, lo dice claro', async () => {
+  const { p } = ready();
+  let reconnects = 0;
+  Object.assign(p, { reconnect: async () => { reconnects++; } });
+  respond = (url, method) => (method === 'PUT' && url.includes('/me/player/play') ? deviceNotFound() : new Response(null, { status: 204 }));
+  const s = track(p.playSnippet('spotify:track:x', 0, 400));
+  for (let i = 0; i < 4; i++) { await flush(); mock.timers.tick(700); }
+  await flush();
+  assert.equal(reconnects, 1);
+  assert.match(String(s.error), /no encuentra el reproductor/);
   assert.equal(p.pendingWaits, 0);
 });
