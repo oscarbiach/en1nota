@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import { App } from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { StorageBanner } from './components/StorageBanner';
 import './styles.css';
 
 // Actualizaciones: revisa cada minuto y avisa con un cartel; el juez decide cuándo recargar.
@@ -31,5 +32,6 @@ createRoot(document.getElementById('root')!).render(
     <ErrorBoundary>
       <App />
     </ErrorBoundary>
+    <StorageBanner />
   </StrictMode>
 );

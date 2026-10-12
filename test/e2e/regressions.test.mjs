@@ -5,7 +5,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import WebSocket from 'ws';
 import {
-  launch, openJudge, openTV, openPlayer, addTablePlayers, addTracks, setSteps, start, gameState, phaseLabel, until, acceptDialogs
+  BASE, launch, openJudge, openTV, openPlayer, addTablePlayers, addTracks, setSteps, start, gameState, phaseLabel, until, acceptDialogs
 } from './helpers.mjs';
 
 let browser;
@@ -475,3 +475,62 @@ for (const skew of [5000, -5000]) {
     await j.ctx.close(); await ana.ctx.close();
   });
 }
+
+// ---------- Segunda auditoría: almacenamiento ----------
+
+test('B06: una partida guardada con esquema inválido no bloquea al juez y no toca las listas', async () => {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(BASE);
+  await page.evaluate(() => {
+    localStorage.setItem('en1nota.game', '{}');
+    localStorage.setItem('en1nota.playlists', JSON.stringify([{ id: 'p1', name: 'Mi lista', tracks: [{ id: 'm', uri: 'manual:m', name: 'Tema', artists: '', album: '', durationMs: 1, startMs: 0 }], updatedAt: 1 }]));
+  });
+  await page.goto(`${BASE}/#/juez`);
+  await page.getByRole('heading', { name: 'Panel del juez' }).waitFor();
+  assert.equal(await page.getByText('Algo falló').count(), 0);
+  await page.getByTestId('storage-banner').getByText('Se recuperaron datos guardados.').waitFor();
+  // Recargar ya no encuentra nada roto.
+  await page.reload();
+  await page.getByRole('heading', { name: 'Panel del juez' }).waitFor();
+  assert.equal(await page.getByText('Algo falló').count(), 0);
+  await page.getByText(/3 · Canciones/).click();
+  await page.getByText('Mi lista').waitFor();
+  const keys = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('en1nota.quarantine.')));
+  assert.equal(keys.length, 1, 'el dato original queda apartado para diagnóstico');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('B04: con el almacenamiento lleno se avisa y se puede descargar un respaldo con lo que está en pantalla', async () => {
+  const j = await openJudge(browser);
+  await j.ctx.addInitScript(() => {
+    const real = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, v) {
+      if (k === 'en1nota.playlists' && localStorage.getItem('fallar') === '1') {
+        throw new DOMException('Lleno', 'QuotaExceededError');
+      }
+      return real.call(this, k, v);
+    };
+  });
+  await j.page.reload();
+  await j.page.evaluate(() => localStorage.setItem('fallar', '1'));
+  await addTracks(j.page, ['Tema Uno']);
+  await j.page.getByPlaceholder('Nombre para guardar la lista actual').fill('Para el sábado');
+  await j.page.getByRole('button', { name: 'Guardar', exact: true }).click();
+  await j.page.getByText('No se pudo guardar la lista en este dispositivo.', { exact: false }).waitFor();
+  await j.page.getByTestId('storage-banner').getByText(/No se pudo guardar las listas en este dispositivo \(almacenamiento lleno\)/).waitFor();
+  assert.equal(await j.page.getByText('Todavía no guardaste ninguna.').count(), 1, 'no aparece como guardada');
+  const [download] = await Promise.all([
+    j.page.waitForEvent('download'),
+    j.page.getByTestId('storage-banner').getByRole('button', { name: 'Descargar respaldo' }).click()
+  ]);
+  const { readFile } = await import('node:fs/promises');
+  const backup = JSON.parse(await readFile(await download.path(), 'utf8'));
+  assert.equal(backup.app, 'en1nota');
+  assert.deepEqual(backup.memory.game.tracks.map((t) => t.name), ['Tema Uno'], 'incluye la lista armada en pantalla');
+  assert.ok(!JSON.stringify(backup).includes('spotify.token'));
+  await j.ctx.close();
+});

@@ -17,6 +17,18 @@ export function PlaylistEditor({ ctx, tracks, setTracks }: { ctx: HostCtx; track
   const [saveName, setSaveName] = useState('');
   const [editing, setEditing] = useState<number | null>(null);
   const searchTimer = useRef<number>(undefined);
+  const [saveErr, setSaveErr] = useState<string>();
+  const saveCurrent = () => {
+    const p = { id: newId(), name: saveName.trim(), tracks, updatedAt: Date.now() };
+    if (!savePlaylist(p)) {
+      // B04: no decir que se guardó. La lista sigue armada en pantalla.
+      setSaveErr('No se pudo guardar la lista en este dispositivo. La lista de la partida sigue armada; descargá un respaldo o liberá espacio desde el aviso de arriba.');
+      return;
+    }
+    setSaveErr(undefined);
+    setSaved(loadPlaylists());
+    setSaveName('');
+  };
   const [manualName, setManualName] = useState('');
   const [manualArtist, setManualArtist] = useState('');
 
@@ -115,8 +127,9 @@ export function PlaylistEditor({ ctx, tracks, setTracks }: { ctx: HostCtx; track
           <h2>Listas guardadas en este dispositivo</h2>
           <div className="row mb">
             <input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder="Nombre para guardar la lista actual" className="grow" />
-            <button className="btn sm" disabled={!saveName.trim() || tracks.length === 0} onClick={() => { const p = { id: newId(), name: saveName.trim(), tracks, updatedAt: Date.now() }; savePlaylist(p); setSaved(loadPlaylists()); setSaveName(''); }}>Guardar</button>
+            <button className="btn sm" disabled={!saveName.trim() || tracks.length === 0} onClick={saveCurrent}>Guardar</button>
           </div>
+          {saveErr && <div className="error small mb" role="alert">{saveErr}</div>}
           {saved.length === 0 && <p className="muted small">Todavía no guardaste ninguna.</p>}
           <ul className="list">
             {saved.map((p) => (

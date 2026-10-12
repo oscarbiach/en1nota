@@ -11,6 +11,7 @@ import { playSfx } from '../audio/sfx';
 import { HostSetup } from './HostSetup';
 import { HostPlay } from './HostPlay';
 import { Podium } from '../components/Podium';
+import { setMemoryBackup } from '../components/StorageBanner';
 import { navigate } from '../App';
 
 export interface JoinRequest {
@@ -61,6 +62,8 @@ export function Host({ authError }: { authError?: string }) {
   });
   const gameRef = useRef(game);
   gameRef.current = game;
+  // B04: el respaldo descargable incluye la partida en memoria, aunque no se haya podido guardar.
+  useEffect(() => { setMemoryBackup(() => ({ game: gameRef.current })); }, []);
 
   const [room, setRoom] = useState<string>();
   const [online, setOnline] = useState(false);
