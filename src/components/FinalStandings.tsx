@@ -1,5 +1,7 @@
 // Resultado final con un único criterio (rankStandings del motor): lo usan
-// el juez, el historial y la TV, así ninguna pantalla anuncia otro ganador.
+// el juez, el historial, la TV y los celulares, así ninguna pantalla anuncia otro ganador.
+import type { FinalResult, PublicState } from '../game/types';
+import { rankStandings } from '../game/engine';
 
 export interface StandingEntry {
   id: string;
@@ -52,4 +54,22 @@ export function FinalStandings({ entries, winnerIds, big = false }: { entries: S
       )}
     </div>
   );
+}
+
+/**
+ * Resultado final a partir del estado público (TV y celulares): no se
+ * recalcula, se muestra el ranking que calculó el juez. Si el juez tiene una
+ * versión anterior que no lo manda, mismo criterio con lo disponible.
+ */
+export function publicStandings(state: PublicState): { entries: StandingEntry[]; winnerIds: string[] } {
+  const byId = new Map(state.players.map((p) => [p.id, p]));
+  const final: FinalResult = state.final ?? (() => {
+    const ranking = rankStandings(state.players.map((p) => ({ id: p.id, score: p.score, correct: 0 })));
+    return { ranking, winnerIds: ranking.filter((r) => r.position === 1).map((r) => r.id) };
+  })();
+  const entries = final.ranking.flatMap((r) => {
+    const p = byId.get(r.id);
+    return p ? [{ id: r.id, name: p.name, color: p.color, score: r.score, position: r.position, detail: `${r.correct} aciertos` }] : [];
+  });
+  return { entries, winnerIds: final.winnerIds };
 }

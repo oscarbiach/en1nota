@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { PeerConnection, type PeerStatus } from '../net/peer';
 import type { HostMsg } from '../net/protocol';
-import type { FinalResult, PublicState } from '../game/types';
-import { rankStandings } from '../game/engine';
-import { FinalStandings, type StandingEntry } from '../components/FinalStandings';
+import type { PublicState } from '../game/types';
+import { FinalStandings, publicStandings } from '../components/FinalStandings';
 import { playSfx, unlockAudio } from '../audio/sfx';
 import { Scoreboard } from '../components/Scoreboard';
 import { RevealCard } from '../components/RevealCard';
@@ -107,15 +106,10 @@ export function ScreenView({ room }: { room: string }) {
 
 function FinishedScreen({ state }: { state: PublicState }) {
   // La TV no recalcula: muestra el ranking y los ganadores que calculó el juez.
-  const byId = new Map(state.players.map((p) => [p.id, p]));
-  const final = state.final ?? fallbackFinal(state);
-  const entries: StandingEntry[] = final.ranking.flatMap((r) => {
-    const p = byId.get(r.id);
-    return p ? [{ id: r.id, name: p.name, color: p.color, score: r.score, position: r.position, detail: `${r.correct} aciertos` }] : [];
-  });
+  const { entries, winnerIds } = publicStandings(state);
   return (
     <div className="col" style={{ alignItems: 'center' }}>
-      <FinalStandings entries={entries} winnerIds={final.winnerIds} big />
+      <FinalStandings entries={entries} winnerIds={winnerIds} big />
       {state.awards && (
         <div className="awards mt" style={{ width: 'min(900px, 90vw)' }}>
           {state.awards.map((a) => <div key={a.k} className="award"><div className="k">{a.k}</div><div className="v">{a.v}</div><div className="muted small">{a.sub}</div></div>)}
@@ -123,10 +117,4 @@ function FinishedScreen({ state }: { state: PublicState }) {
       )}
     </div>
   );
-}
-
-/** Juez con una versión anterior que no manda `final`: mismo criterio, sin aciertos. */
-function fallbackFinal(state: PublicState): FinalResult {
-  const ranking = rankStandings(state.players.map((p) => ({ id: p.id, score: p.score, correct: 0 })));
-  return { ranking, winnerIds: ranking.filter((r) => r.position === 1).map((r) => r.id) };
 }

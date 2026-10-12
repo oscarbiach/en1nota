@@ -287,7 +287,7 @@ test('A10: "Empezar de cero" reincorpora a los celulares conectados', async () =
   await j.page.getByRole('button', { name: 'Revelar (nadie)' }).click();
   await j.page.getByRole('button', { name: 'Terminar partida' }).first().click();
   await j.page.getByText('Fin de la partida').waitFor();
-  await beto.page.getByText('Mirá el resultado en la tele').waitFor();
+  await beto.page.getByTestId('phone-final').waitFor();
 
   await j.page.getByRole('button', { name: 'Empezar de cero' }).click();
   await j.page.getByText(/2 · Jugadores \(1\)/).click();
@@ -577,4 +577,29 @@ test('el juez puede escuchar la canción para verificar mientras alguien tiene l
   await page.getByRole('button', { name: /Incorrecto/ }).click();
   await until(() => calls.slice(before).some((c) => c.path === '/me/player/pause'), 'al marcar Incorrecto se corta el audio');
   await ctx.close();
+});
+
+test('sin TV: el celular muestra la tabla de puntajes y el mismo resultado final que el juez', async () => {
+  const j = await openJudge(browser);
+  acceptDialogs(j.page);
+  await addTablePlayers(j.page, ['Mesa']);
+  await addTracks(j.page, ['Tema Uno']);
+  const ana = await openPlayer(browser, j.room, 'Ana');
+  await ana.page.getByText('Esperando que arranque la partida').waitFor();
+  await start(j.page);
+  await sonar(j.page).click();
+  await ana.page.locator('.bigbtn').tap();
+  await j.page.getByRole('button', { name: /Correcto/ }).click();
+  await ana.page.getByRole('button', { name: 'Puntajes' }).click();
+  const list = ana.page.getByTestId('phone-scores');
+  await list.getByText('Ana (vos)').waitFor();
+  assert.deepEqual((await list.locator('li').allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim()), ['Ana (vos)1', 'Mesa0']);
+  await ana.page.getByRole('button', { name: 'Volver' }).click();
+  await j.page.getByRole('button', { name: 'Terminar partida' }).first().click();
+  await j.page.getByText('Fin de la partida').waitFor();
+  const final = ana.page.getByTestId('phone-final');
+  await final.getByTestId('winner-line').waitFor();
+  assert.equal(await final.getByTestId('winner-line').textContent(), await j.page.getByTestId('winner-line').textContent());
+  assert.deepEqual([...j.errors, ...ana.errors], []);
+  await j.ctx.close(); await ana.ctx.close();
 });

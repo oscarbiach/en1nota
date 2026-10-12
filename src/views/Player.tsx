@@ -7,6 +7,7 @@ import { playSfx, unlockAudio } from '../audio/sfx';
 import { RevealCard } from '../components/RevealCard';
 import { navigate } from '../App';
 import { usePress } from '../components/press';
+import { FinalStandings, publicStandings } from '../components/FinalStandings';
 
 const STATUS_TEXT: Record<PeerStatus, string> = {
   connecting: 'Conectando…',
@@ -45,6 +46,8 @@ function Buzzer({ room, name }: { room: string; name: string }) {
   const [state, setState] = useState<PublicState | null>(null);
   const [rejected, setRejected] = useState<string>();
   const [waiting, setWaiting] = useState<string>();
+  /** Sin TV, cada celular puede ver la tabla. */
+  const [showScores, setShowScores] = useState(false);
   const conn = useRef<PeerConnection>(null);
   const lastBuzz = useRef(0);
 
@@ -98,7 +101,7 @@ function Buzzer({ room, name }: { room: string; name: string }) {
   else if (!mine && waiting) { label = 'Esperando al juez'; sub = waiting; }
   else if (!mine) { label = 'Esperando'; sub = 'El juez todavía no te agregó'; }
   else if (state?.phase === 'lobby') { label = 'Listo'; sub = 'Esperando que arranque la partida'; }
-  else if (state?.phase === 'finished') { label = 'Fin'; sub = 'Mirá el resultado en la tele'; }
+  else if (state?.phase === 'finished') { label = 'Fin'; sub = 'Terminó la partida'; }
   else if (state?.phase === 'revealed') { label = '🎵'; sub = state.solvedBy === myId ? '¡La sacaste!' : 'Ahí está la canción'; }
   else if (hasFloor) { label = '¡Tuya!'; sub = 'Decí el nombre exacto o cantá la letra'; cls = 'mine'; }
   else if (other) { label = other.name; sub = 'tiene la palabra'; }
@@ -113,7 +116,13 @@ function Buzzer({ room, name }: { room: string; name: string }) {
         <span className={`pill ${status === 'joined' ? 'on' : 'off'}`}>{room}</span>
         <span style={{ fontSize: '1.4rem', color: (mine?.score ?? 0) < 0 ? 'var(--bad)' : undefined }}>{mine?.score ?? 0}</span>
       </div>
-      {state?.phase === 'revealed' && state.revealed ? (
+      {showScores && state ? (
+        <ScoreList state={state} myId={myId} />
+      ) : state?.phase === 'finished' ? (
+        <div className="grow col" style={{ justifyContent: 'center', overflow: 'auto' }} data-testid="phone-final">
+          <FinalStandings {...publicStandings(state)} />
+        </div>
+      ) : state?.phase === 'revealed' && state.revealed ? (
         <div className="grow col" style={{ justifyContent: 'center', alignItems: 'center' }}>
           <RevealCard revealed={state.revealed} />
           <div className="big fade" style={{ fontWeight: 800, color: state.solvedBy === myId ? 'var(--ok)' : 'var(--muted)' }}>
@@ -130,6 +139,9 @@ function Buzzer({ room, name }: { room: string; name: string }) {
       <div className="row between small muted">
         <span>{state ? `Tema ${state.trackIndex + 1}/${state.trackCount}` : ''}</span>
         <span>{state?.notice ?? ''}</span>
+        {state && state.phase !== 'lobby' && state.phase !== 'finished' && (
+          <button className="btn sm ghost" aria-pressed={showScores} onClick={() => setShowScores((v) => !v)}>{showScores ? 'Volver' : 'Puntajes'}</button>
+        )}
         <button className="btn sm ghost" onClick={() => navigate('/')}>Salir</button>
       </div>
     </div>
@@ -147,6 +159,25 @@ function OtherRoom({ current }: { current: string }) {
         onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && go()}
         style={{ textTransform: 'uppercase', letterSpacing: '.3em', fontWeight: 800 }} className="grow" />
       <button className="btn primary" disabled={clean.length !== 4 || clean === current} onClick={go}>Entrar</button>
+    </div>
+  );
+}
+
+/** Tabla de puntajes en el celular, para jugar sin TV. */
+function ScoreList({ state, myId }: { state: PublicState; myId?: string }) {
+  const sorted = [...state.players].sort((a, b) => b.score - a.score);
+  return (
+    <div className="grow col" style={{ justifyContent: 'center' }} data-testid="phone-scores">
+      <h2 style={{ textAlign: 'center' }}>Puntajes</h2>
+      <ul className="list">
+        {sorted.map((p) => (
+          <li key={p.id} className={`item ${p.id === myId ? 'current' : ''}`}>
+            <span className="dot" style={{ background: p.color }} />
+            <div className="t"><b>{p.name}{p.id === myId ? ' (vos)' : ''}</b></div>
+            <b style={{ fontSize: '1.3rem', color: p.score < 0 ? 'var(--bad)' : undefined }}>{p.score}</b>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
