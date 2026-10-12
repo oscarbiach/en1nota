@@ -148,9 +148,12 @@ Las salas viven en la memoria del servidor; un reinicio (deploy, o Render
 despertando el servicio) las borra. Las claves del juez y de cada celular son
 firmas con `ROOM_SECRET`, así que con esa variable **fija** el servidor las
 reconoce al volver: el juez recupera el mismo código y cada celular su puesto,
-sin hacer nada. Para configurarla en Render: *Environment → Add Environment
-Variable*, nombre `ROOM_SECRET`, valor largo y aleatorio (por ejemplo
-`openssl rand -hex 32`). No compartirla: quien la tenga puede firmar claves.
+sin hacer nada. `render.yaml` la declara con `generateValue: true`: Render
+genera un valor aleatorio la primera vez que sincroniza el Blueprint y lo
+conserva entre deploys. Si el servicio no se sincroniza desde el Blueprint,
+agregarla a mano en *Environment → Add Environment Variable* con un valor
+largo y aleatorio (por ejemplo `openssl rand -hex 32`). No compartirla: quien
+la tenga puede firmar claves.
 
 Sin `ROOM_SECRET`, el servidor genera uno por proceso: todo funciona, pero tras
 un reinicio el juez recibe un código nuevo (lo muestra en rojo) y cada celular

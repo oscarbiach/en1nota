@@ -6,3 +6,9 @@ services:
     plan: free
     healthCheckPath: /healthz
     autoDeploy: true
+    envVars:
+      # Firma las claves de sala: con un valor fijo, tras un reinicio el juez
+      # recupera el mismo código y cada celular su puesto (ver README).
+      # Render lo genera una sola vez y lo conserva entre deploys.
+      - key: ROOM_SECRET
+        generateValue: true
