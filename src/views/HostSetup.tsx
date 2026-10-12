@@ -131,7 +131,7 @@ function SpotifyTab({ ctx }: { ctx: HostCtx }) {
               {' '}<a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer">Dashboard de Spotify</a> y pegar acá su Client ID.
               En la app, agregá como Redirect URI exactamente: <code>{redirectUri()}</code>
             </p>
-            <div className="field"><label>Client ID</label><input value={clientId} onChange={(e) => setCid(e.target.value)} placeholder="32 caracteres" /></div>
+            <div className="field"><label htmlFor="cfg-client-id">Client ID</label><input id="cfg-client-id" value={clientId} onChange={(e) => setCid(e.target.value)} placeholder="32 caracteres" /></div>
             <button className="btn primary" disabled={clientId.trim().length < 20} onClick={() => { setClientId(clientId); beginLogin('#/juez').catch((e: Error) => setErr(e.message)); }}>Conectar con Spotify</button>
           </>
         ) : (
@@ -167,7 +167,7 @@ function SpotifyTab({ ctx }: { ctx: HostCtx }) {
         </div>
         {mode === 'connect' && (
           <div className="field row">
-            <select value={devId} onChange={(e) => setDevId(e.target.value)} className="grow">
+            <select aria-label="Dispositivo de Spotify" value={devId} onChange={(e) => setDevId(e.target.value)} className="grow">
               {devs.length === 0 && <option value="">Abrí Spotify en algún dispositivo…</option>}
               {devs.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.type}){d.is_active ? ' · activo' : ''}</option>)}
             </select>
@@ -204,14 +204,14 @@ function PlayersTab({ ctx }: { ctx: HostCtx }) {
         <hr style={{ borderColor: 'var(--line)', margin: '14px 0' }} />
         <h2>Pantalla de TV</h2>
         <p className="muted small">Abrí esto en la tele o notebook conectada:</p>
-        {room && <div className="row"><input readOnly value={screenUrl(room)} onFocus={(e) => e.target.select()} /><button className="btn sm" onClick={() => window.open(screenUrl(room), '_blank')}>Abrir</button></div>}
+        {room && <div className="row"><input readOnly aria-label="Link de la pantalla de TV" value={screenUrl(room)} onFocus={(e) => e.target.select()} /><button className="btn sm" onClick={() => window.open(screenUrl(room), '_blank')}>Abrir</button></div>}
       </div>
 
       <div className="card">
         <h2>Jugadores ({game.players.length}/8)</h2>
         <p className="muted small">Los que entran por celu aparecen solos. También podés agregar a mano para el <b>modo mesa</b>: pulsadores en esta pantalla con teclas 1-8.</p>
         <div className="row mb">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre" maxLength={24} onKeyDown={(e) => e.key === 'Enter' && add()} className="grow" />
+          <input aria-label="Nombre del jugador nuevo" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre" maxLength={24} onKeyDown={(e) => e.key === 'Enter' && add()} className="grow" />
           <button className="btn" disabled={!name.trim() || game.players.length >= 8} onClick={add}>Agregar</button>
         </div>
         <ul className="list">
@@ -219,7 +219,7 @@ function PlayersTab({ ctx }: { ctx: HostCtx }) {
             <li key={p.id} className="item">
               <span className="dot" style={{ background: p.color }} />
               <div className="t">
-                <input value={p.name} onChange={(e) => update((g) => E.renamePlayer(g, p.id, e.target.value))} style={{ minHeight: 34, padding: '4px 8px', background: 'transparent', border: 'none' }} />
+                <input aria-label={`Nombre del jugador ${p.key ?? ''}`} value={p.name} onChange={(e) => update((g) => E.renamePlayer(g, p.id, e.target.value))} style={{ minHeight: 34, padding: '4px 8px', background: 'transparent', border: 'none' }} />
               </div>
               <span className="pill">{ctx.peers.has(p.id) ? (p.connected ? '📱 celu' : '📴 desconectado') : `⌨️ tecla ${p.key}`}</span>
               <button className="btn sm ghost" aria-label={`Quitar a ${p.name}`} onClick={() => ctx.kick(p.id)}>✕</button>
@@ -243,28 +243,28 @@ function RulesTab({ settings, onChange }: { settings: Settings; onChange: (s: Se
       <div className="card">
         <h2>Fragmentos</h2>
         <div className="field">
-          <label>Duración de cada pasada, en segundos (si nadie acierta, la siguiente es más larga)</label>
-          <input value={stepsText} onChange={(e) => setStepsText(e.target.value)} onBlur={applySteps} placeholder="0.4, 1.2, 3, 8" />
+          <label htmlFor="cfg-steps">Duración de cada pasada, en segundos (si nadie acierta, la siguiente es más larga)</label>
+          <input id="cfg-steps" value={stepsText} onChange={(e) => setStepsText(e.target.value)} onBlur={applySteps} placeholder="0.4, 1.2, 3, 8" />
           <div className="steps mt">{settings.steps.map((s, i) => <span key={i} className="on">{secs(s)}</span>)}</div>
         </div>
         <div className="field">
-          <label>Cuántos segundos suena la canción al revelarla</label>
-          <input type="number" min={3} max={60} value={settings.revealMs / 1000} onChange={(e) => onChange({ ...settings, revealMs: Math.max(3, Number(e.target.value)) * 1000 })} />
+          <label htmlFor="cfg-reveal">Cuántos segundos suena la canción al revelarla</label>
+          <input id="cfg-reveal" type="number" min={3} max={60} value={settings.revealMs / 1000} onChange={(e) => onChange({ ...settings, revealMs: Math.max(3, Number(e.target.value)) * 1000 })} />
         </div>
         <div className="field">
-          <label>Ventana de empate (ms): pulsaciones dentro de este margen se ordenan por reloj sincronizado</label>
-          <input type="number" min={0} max={1000} step={50} value={settings.buzzWindowMs} onChange={(e) => onChange({ ...settings, buzzWindowMs: Math.max(0, Number(e.target.value)) })} />
+          <label htmlFor="cfg-window">Ventana de empate (ms): pulsaciones dentro de este margen se ordenan por hora de llegada al servidor</label>
+          <input id="cfg-window" type="number" min={0} max={1000} step={50} value={settings.buzzWindowMs} onChange={(e) => onChange({ ...settings, buzzWindowMs: Math.max(0, Number(e.target.value)) })} />
         </div>
       </div>
       <div className="card">
         <h2>Puntos</h2>
         <div className="field">
-          <label>Por acertar en cada pasada (uno solo = siempre lo mismo)</label>
-          <input value={pointsText} onChange={(e) => setPointsText(e.target.value)} onBlur={applyPoints} placeholder="1  ó  3, 2, 1" />
+          <label htmlFor="cfg-points">Por acertar en cada pasada (uno solo = siempre lo mismo)</label>
+          <input id="cfg-points" value={pointsText} onChange={(e) => setPointsText(e.target.value)} onBlur={applyPoints} placeholder="1  ó  3, 2, 1" />
         </div>
         <div className="row">
-          <div className="field grow"><label>Por fallar / quedarse en blanco</label><input type="number" value={settings.pointsWrong} onChange={(e) => onChange({ ...settings, pointsWrong: Number(e.target.value) })} /></div>
-          <div className="field grow"><label>Por tararear</label><input type="number" value={settings.pointsHum} onChange={(e) => onChange({ ...settings, pointsHum: Number(e.target.value) })} /></div>
+          <div className="field grow"><label htmlFor="cfg-wrong">Por fallar / quedarse en blanco</label><input id="cfg-wrong" type="number" value={settings.pointsWrong} onChange={(e) => onChange({ ...settings, pointsWrong: Number(e.target.value) })} /></div>
+          <div className="field grow"><label htmlFor="cfg-hum">Por tararear</label><input id="cfg-hum" type="number" value={settings.pointsHum} onChange={(e) => onChange({ ...settings, pointsHum: Number(e.target.value) })} /></div>
         </div>
         <label className="row"><input type="checkbox" checked={settings.lockOnFail} onChange={(e) => onChange({ ...settings, lockOnFail: e.target.checked })} />El que falla queda bloqueado en ese tema</label>
       </div>

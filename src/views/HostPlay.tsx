@@ -292,7 +292,7 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
         Activo: <b>{player ? MODE_LABEL[player.mode] : 'ninguno'}</b> · {ctx.playerStatus}
       </div>
       <div className="row">
-        <select value={mode} onChange={(e) => setMode(e.target.value as PlayerModeSetting)} className="grow">
+        <select aria-label="Reproductor" value={mode} onChange={(e) => setMode(e.target.value as PlayerModeSetting)} className="grow">
           {sdkSupported() && <option value="sdk">Suena en este navegador</option>}
           <option value="connect">App de Spotify (Connect)</option>
           <option value="manual">Música manual (sin Spotify)</option>

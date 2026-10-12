@@ -78,7 +78,7 @@ export function ScreenView({ room }: { room: string }) {
             <div className="code">{room}</div>
             <div className="muted">{location.host}</div>
             <div className="row" style={{ justifyContent: 'center' }}>
-              {state?.players.map((p) => <span key={p.id} className="pill" style={{ borderColor: p.color, color: p.color }}>{p.name}</span>)}
+              {state?.players.map((p) => <span key={p.id} className="pill" style={{ borderColor: p.color, color: 'var(--text)' }}><span className="dot" style={{ background: p.color }} />{p.name}</span>)}
             </div>
           </div>
         ) : state.phase === 'finished' ? (

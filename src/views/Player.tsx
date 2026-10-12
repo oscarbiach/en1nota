@@ -120,7 +120,7 @@ function Buzzer({ room, name }: { room: string; name: string }) {
           </div>
         </div>
       ) : (
-        <button className={`bigbtn ${cls}`} {...press} disabled={!canBuzz && !hasFloor} aria-label={`${label}. ${sub}`}>
+        <button className={`bigbtn ${cls}`} {...press} disabled={!canBuzz && !hasFloor}>
           <span>{label}</span>
           <small>{sub}</small>
         </button>

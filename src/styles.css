@@ -7,6 +7,8 @@
   --text: #f4f2ff;
   --muted: #a6a3c4;
   --accent: #ff2d75;
+  /* Fondo de botones con texto blanco: 4,95:1 (WCAG AA). --accent queda para texto sobre fondo oscuro. */
+  --accent-strong: #d81b60;
   --accent2: #2dd4ff;
   --ok: #7cff5c;
   --warn: #ffd23f;
@@ -65,12 +67,14 @@ p { margin: 0 0 .8em; }
   transition: transform .06s ease, background .15s ease, opacity .15s ease;
   user-select: none;
   min-height: 46px;
+  /* Sin zoom por doble toque en botones; el zoom con dos dedos sigue disponible (B07). */
+  touch-action: manipulation;
 }
 .btn:hover { background: #2f2f58; }
 .btn:active { transform: scale(.97); }
 .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
-.btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
-.btn.primary:hover { background: #ff4d8a; }
+.btn.primary { background: var(--accent-strong); border-color: transparent; color: #fff; }
+.btn.primary:hover { background: #c2185b; }
 .btn.ok { background: #1f6b2a; border-color: #2f9a3d; }
 .btn.bad { background: #7a2020; border-color: #b23333; }
 .btn.warn { background: #6b5a12; border-color: #b8981f; }
@@ -143,6 +147,7 @@ label { display: block; color: var(--muted); font-size: .85rem; margin-bottom: 4
 .secret.hidden b, .secret.hidden span { filter: blur(9px); user-select: none; }
 .pads { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
 .pad {
+  touch-action: manipulation;
   border: none; border-radius: 16px; min-height: 96px; font: inherit; font-weight: 800; font-size: 1.1rem;
   background: var(--c); color: #0b0b12; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
   transition: transform .05s ease, filter .1s ease;
@@ -215,4 +220,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   width: min(640px, calc(100% - 32px)); z-index: 90; display: flex; flex-direction: column; gap: 8px;
   padding: 12px 14px; border-radius: 12px; background: #3a2a10; border: 1px solid var(--warn); color: #fff3d0;
   box-shadow: 0 10px 40px rgba(0,0,0,.5);
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
