@@ -46,6 +46,7 @@ export function HostSetup({ ctx, setTracks, authError }: { ctx: HostCtx; setTrac
       </div>
 
       {authError && <div className="error mb">{authError}</div>}
+      {ctx.serverFull && !room && <div className="error mb" role="alert">El servidor está lleno en este momento y no puede abrir más salas. Se vuelve a intentar solo cada 30 segundos.</div>}
 
       <div className="tabs">
         <button className={tab === 'spotify' ? 'on' : ''} onClick={() => setTab('spotify')}>1 · Spotify</button>

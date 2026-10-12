@@ -5,7 +5,7 @@ import { parseHostMsg } from './validate';
 
 const KEY_ID = 'en1nota.identity';
 
-export type PeerStatus = 'connecting' | 'joined' | 'no_room' | 'host_gone' | 'kicked' | 'closed' | 'replaced' | 'offline';
+export type PeerStatus = 'connecting' | 'joined' | 'no_room' | 'room_full' | 'host_gone' | 'kicked' | 'closed' | 'replaced' | 'offline';
 
 export interface PeerEvents {
   onStatus: (s: PeerStatus) => void;
@@ -65,6 +65,7 @@ export class PeerConnection {
         }
         case 'error':
           if (m.code === 'no_room') { this.ev.onStatus('no_room'); this.socket.close(); }
+          else if (m.code === 'room_full') { this.ev.onStatus('room_full'); this.socket.close(); }
           break;
         case 'host_gone': this.ev.onStatus('host_gone'); break;
         case 'host_back': this.ev.onStatus('joined'); this.send({ k: 'hello', role: this.role, name: this.name }); break;

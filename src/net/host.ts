@@ -18,6 +18,8 @@ export interface HostEvents {
   onOnline: (online: boolean) => void;
   /** Otra pestaña o dispositivo tomó esta sala con su clave. */
   onReplaced: () => void;
+  /** El servidor alcanzó su máximo de salas; se reintenta solo. */
+  onServerFull?: () => void;
 }
 
 export class HostConnection {
@@ -27,6 +29,7 @@ export class HostConnection {
   private lastState?: PublicState;
   /** Sala que teníamos antes de un `bad_key`, para avisar si cambió el código. */
   private lostRoom?: string;
+  private fullRetry?: ReturnType<typeof setTimeout>;
   private ev: HostEvents;
 
   constructor(ev: HostEvents) {
@@ -83,6 +86,11 @@ export class HostConnection {
             this.room = undefined; this.key = undefined;
             try { sessionStorage.removeItem(KEY_ROOM); } catch { /* sin storage */ }
             this.socket.raw({ t: 'host' });
+          } else if (m.code === 'server_full') {
+            // Se alcanzó el máximo de salas del servidor: avisar y reintentar.
+            this.ev.onServerFull?.();
+            clearTimeout(this.fullRetry);
+            this.fullRetry = setTimeout(() => this.socket.raw({ t: 'host', room: this.room, key: this.key }), 30_000);
           }
           break;
       }
@@ -118,6 +126,7 @@ export class HostConnection {
   }
 
   stop() {
+    clearTimeout(this.fullRetry);
     this.socket.close();
   }
 }

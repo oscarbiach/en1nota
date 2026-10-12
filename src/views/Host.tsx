@@ -50,6 +50,8 @@ export interface HostCtx {
   /** Código anterior si la sala cambió durante la partida. */
   roomChangedFrom?: string;
   dismissRoomChanged: () => void;
+  /** El servidor no admite más salas por ahora (se reintenta solo). */
+  serverFull: boolean;
   loggedIn: boolean;
   setLoggedIn: (v: boolean) => void;
 }
@@ -73,6 +75,7 @@ export function Host({ authError }: { authError?: string }) {
   const [localSfx, setLocalSfx] = useState(true);
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
   const [replaced, setReplaced] = useState(false);
+  const [serverFull, setServerFull] = useState(false);
   /** Código anterior si la sala cambió (servidor reiniciado sin ROOM_SECRET). */
   const [roomChangedFrom, setRoomChangedFrom] = useState<string>();
   /** Celulares que entraron con la partida empezada y esperan que el juez diga quiénes son. */
@@ -89,10 +92,12 @@ export function Host({ authError }: { authError?: string }) {
     const c = new HostConnection({
       onRoom: (r, previous) => {
         setRoom(r);
+        setServerFull(false);
         if (previous) setRoomChangedFrom(previous);
       },
       onOnline: setOnline,
       onReplaced: () => setReplaced(true),
+      onServerFull: () => setServerFull(true),
       onRoster: (list) => {
         // La lista del servidor es la verdad: un celular que no está en ella
         // no está conectado (p. ej. el servidor se reinició y todavía no volvió).
@@ -254,7 +259,7 @@ export function Host({ authError }: { authError?: string }) {
   const ctx: HostCtx = {
     game, update, room, online, peers, conn, player, playerStatus, setPlayer, setPlayerStatus,
     localSfx, setLocalSfx, sfx: emitSfx, buzz: onBuzz, now: () => conn.socket.serverNow(), kick, loggedIn, setLoggedIn,
-    joinRequests, resolveJoin, roomChangedFrom, dismissRoomChanged: () => setRoomChangedFrom(undefined)
+    joinRequests, resolveJoin, roomChangedFrom, dismissRoomChanged: () => setRoomChangedFrom(undefined), serverFull
   };
 
   const setTracks = (tracks: Track[]) => update((g) => ({ ...g, tracks }));

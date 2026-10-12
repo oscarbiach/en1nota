@@ -18,6 +18,27 @@ const MAX_PAYLOAD = 64 * 1024; // un estado público con 8 jugadores ocupa ~3 KB
 /** Código de cierre para conexiones reemplazadas: el cliente no debe reconectar. */
 const CLOSE_REPLACED = 4001;
 
+// Límites de recursos. Un servidor gratuito chico; ajustables por entorno.
+const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
+const MAX_ROOMS = num(process.env.MAX_ROOMS, 500);
+const MAX_CONNECTIONS = num(process.env.MAX_CONNECTIONS, 2000);
+/** Identidades por sala (jugadores, pantallas y quienes esperan aprobación). La UI usa hasta 8 jugadores. */
+const MAX_PEERS_PER_ROOM = num(process.env.MAX_PEERS_PER_ROOM, 32);
+/** Un celular desconectado hace más que esto deja de ocupar lugar en la sala. */
+const PEER_TTL_MS = num(process.env.PEER_TTL_MS, 30 * 60 * 1000);
+const SWEEP_MS = num(process.env.SWEEP_MS, 60 * 1000);
+/**
+ * Frecuencia por conexión (cubeta de fichas): mensajes por segundo y ráfaga.
+ * Un celular manda pings y pulsaciones; el juez difunde el estado en cada
+ * cambio, por eso tiene más margen.
+ */
+const RATE = { peer: { perSec: 10, burst: 20 }, host: { perSec: 100, burst: 200 } };
+/** Mensajes descartados por frecuencia que se toleran antes de cortar la conexión. */
+const RATE_CLOSE_AFTER = 100;
+
+/** Métricas para /healthz. */
+const stats = { started: Date.now(), rejected: { server_full: 0, room_full: 0, connections: 0, rate: 0, invalid: 0 } };
+
 /**
  * Las credenciales son firmas HMAC con este secreto, así el servidor las
  * puede verificar aunque se haya reiniciado y perdido las salas en memoria
@@ -43,7 +64,19 @@ function validHostKey(code, key) {
 const peerSecret = (code, role, pid) => mac(`peer:${code}:${role}:${pid}`);
 
 const app = express();
-app.get('/healthz', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
+app.get('/healthz', (_req, res) => {
+  let peers = 0;
+  for (const r of rooms.values()) peers += r.peers.size;
+  res.json({
+    ok: true,
+    rooms: rooms.size,
+    peers,
+    connections: wss.clients.size,
+    uptimeS: Math.round((Date.now() - stats.started) / 1000),
+    limits: { rooms: MAX_ROOMS, connections: MAX_CONNECTIONS, peersPerRoom: MAX_PEERS_PER_ROOM },
+    rejected: stats.rejected
+  });
+});
 app.use(express.static(DIST, { index: 'index.html', maxAge: '1h' }));
 app.get(/.*/, (_req, res) => res.sendFile(path.join(DIST, 'index.html')));
 
@@ -106,14 +139,40 @@ function armExpiry(room) {
 }
 
 wss.on('connection', (ws) => {
-  /** @type {{room?:string, pid?:string, isHost?:boolean}} */
-  const me = {};
-  ws.isAlive = true;
-  ws.on('pong', () => { ws.isAlive = true; });
   // Sin este handler, un error de protocolo de UN cliente (p. ej. un mensaje
   // que excede maxPayload) es un 'error' sin escuchar y termina el proceso.
   // ws ya cierra esa conexión; acá sólo evitamos que caiga el servidor.
   ws.on('error', () => {});
+  if (wss.clients.size > MAX_CONNECTIONS) {
+    stats.rejected.connections++;
+    ws.close(1013, 'servidor lleno'); // 1013: probá más tarde
+    return;
+  }
+  /** @type {{room?:string, pid?:string, isHost?:boolean}} */
+  const me = {};
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+
+  // Cubeta de fichas: cada mensaje gasta una; se recargan con el tiempo.
+  const bucket = { tokens: RATE.peer.burst, last: Date.now(), dropped: 0 };
+  const allowed = () => {
+    const lim = me.isHost ? RATE.host : RATE.peer;
+    const now = Date.now();
+    bucket.tokens = Math.min(lim.burst, bucket.tokens + ((now - bucket.last) / 1000) * lim.perSec);
+    bucket.last = now;
+    if (bucket.tokens >= 1) { bucket.tokens -= 1; return true; }
+    stats.rejected.rate++;
+    if (++bucket.dropped >= RATE_CLOSE_AFTER) ws.close(1008, 'demasiados mensajes');
+    return false;
+  };
+  const invalid = () => { stats.rejected.invalid++; };
+  /** No se crean más salas que MAX_ROOMS. */
+  const full = () => {
+    if (rooms.size < MAX_ROOMS) return false;
+    stats.rejected.server_full++;
+    send(ws, { t: 'error', code: 'server_full' });
+    return true;
+  };
 
   /** Sala de esta conexión sólo si sigue siendo su juez vigente. */
   const hostRoom = () => {
@@ -128,9 +187,10 @@ wss.on('connection', (ws) => {
   };
 
   ws.on('message', (raw) => {
+    if (!allowed()) return;
     let msg;
-    try { msg = JSON.parse(raw.toString()); } catch { return; }
-    if (!msg || typeof msg !== 'object' || typeof msg.t !== 'string') return;
+    try { msg = JSON.parse(raw.toString()); } catch { invalid(); return; }
+    if (!msg || typeof msg !== 'object' || typeof msg.t !== 'string') { invalid(); return; }
 
     switch (msg.t) {
       case 'ping':
@@ -153,8 +213,10 @@ wss.on('connection', (ws) => {
           // La sala no existe (p. ej. el servidor se reinició): se recupera
           // con el mismo código sólo si la clave está firmada por nosotros.
           if (!validHostKey(code, msg.key)) { send(ws, { t: 'error', code: 'bad_key' }); return; }
+          if (full()) return;
           room = newRoom(code, msg.key);
         } else {
+          if (full()) return;
           const c = newCode();
           room = newRoom(c, newHostKey(c));
         }
@@ -180,11 +242,18 @@ wss.on('connection', (ws) => {
           // Tras un reinicio, un celular con identidad válida espera al juez
           // en la misma sala en vez de quedar en "esa sala no existe".
           if (!proven) { send(ws, { t: 'error', code: 'no_room' }); return; }
+          if (full()) return;
           room = newRoom(code, null);
           armExpiry(room);
         }
         const resume = proven && !room.banned.has(msg.pid);
         const known = resume ? room.peers.get(msg.pid) : undefined;
+        // Quien retoma su identidad siempre entra; los nuevos, hasta el máximo.
+        if (!resume && room.peers.size >= MAX_PEERS_PER_ROOM) {
+          stats.rejected.room_full++;
+          send(ws, { t: 'error', code: 'room_full' });
+          return;
+        }
         const pid = resume ? msg.pid : crypto.randomBytes(6).toString('hex');
         const secret = peerSecret(room.code, role, pid);
         const prevWs = known?.ws ?? null;
@@ -201,7 +270,7 @@ wss.on('connection', (ws) => {
         const room = hostRoom();
         if (room) {
           const data = hostData(msg.data);
-          if (!data) return;
+          if (!data) { invalid(); return; }
           if (msg.to === 'all') {
             for (const p of room.peers.values()) send(p.ws, { t: 'msg', data });
           } else if (isId(msg.to)) {
@@ -213,7 +282,7 @@ wss.on('connection', (ws) => {
         const entry = peerEntry();
         if (!entry) return;
         const data = peerData(msg.data, entry.p.role);
-        if (!data) return;
+        if (!data) { invalid(); return; }
         send(entry.room.host, { t: 'msg', from: me.pid, data, at: Date.now() });
         return;
       }
@@ -237,6 +306,9 @@ wss.on('connection', (ws) => {
         rooms.delete(room.code);
         return;
       }
+
+      default:
+        invalid();
     }
   });
 
@@ -253,6 +325,7 @@ wss.on('connection', (ws) => {
       const p = room.peers.get(me.pid);
       if (p && p.ws === ws) {
         p.ws = null;
+        p.goneAt = Date.now();
         send(room.host, { t: 'peer', pid: me.pid, role: p.role, name: p.name, connected: false });
       }
     }
@@ -267,5 +340,14 @@ setInterval(() => {
     ws.ping();
   }
 }, 30000);
+
+// Limpieza: identidades desconectadas hace más de PEER_TTL_MS dejan de ocupar
+// lugar. Si vuelven con su secreto firmado, entran de nuevo igual.
+setInterval(() => {
+  const limit = Date.now() - PEER_TTL_MS;
+  for (const room of rooms.values()) {
+    for (const [pid, p] of room.peers) if (!p.ws && (p.goneAt ?? 0) < limit) room.peers.delete(pid);
+  }
+}, SWEEP_MS).unref();
 
 server.listen(PORT, () => console.log(`En 1 Nota escuchando en http://0.0.0.0:${PORT}`));

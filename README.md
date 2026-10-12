@@ -156,3 +156,24 @@ Sin `ROOM_SECRET`, el servidor genera uno por proceso: todo funciona, pero tras
 un reinicio el juez recibe un código nuevo (lo muestra en rojo) y cada celular
 entra con ese código; el juez confirma quién es cada uno y conservan su
 puntaje. Nadie recupera un puesto sin esa confirmación.
+
+### Límites y estado del servidor
+
+El servidor limita recursos para que un cliente roto o malicioso no lo
+sature. Valores por defecto, ajustables por variable de entorno:
+
+| Variable | Por defecto | Qué limita |
+|---|---|---|
+| `MAX_ROOMS` | 500 | salas abiertas a la vez (el juez ve "servidor lleno" y reintenta solo) |
+| `MAX_CONNECTIONS` | 2000 | conexiones simultáneas |
+| `MAX_PEERS_PER_ROOM` | 32 | identidades por sala; quien retoma la suya siempre entra |
+| `PEER_TTL_MS` | 1800000 | tras 30 min desconectada, una identidad deja de ocupar lugar |
+
+Además cada conexión tiene un límite de frecuencia (celular 10 mensajes/s con
+ráfagas de 20; juez 100/s): lo que excede se descarta y un abuso sostenido
+cierra esa conexión. Mensajes de hasta 64 KB.
+
+`GET /healthz` devuelve salas, identidades, conexiones, tiempo en marcha y
+contadores de rechazos (`server_full`, `room_full`, `connections`, `rate`,
+`invalid`). No se hicieron pruebas de carga: los valores son prudentes, no
+medidos.

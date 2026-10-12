@@ -12,6 +12,7 @@ const STATUS_TEXT: Record<PeerStatus, string> = {
   connecting: 'Conectando…',
   joined: 'Conectado',
   no_room: 'Esa sala no existe. Revisá el código.',
+  room_full: 'La sala está llena.',
   host_gone: 'El juez se desconectó, esperando…',
   kicked: 'El juez te sacó de la sala.',
   closed: 'La sala se cerró.',
