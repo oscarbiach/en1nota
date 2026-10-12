@@ -157,13 +157,13 @@ function SpotifyTab({ ctx }: { ctx: HostCtx }) {
         <p className="muted small">Dónde suena la música. El estado actual: <b>{ctx.playerStatus}</b></p>
         <div className="field">
           <label><input type="radio" checked={mode === 'sdk'} disabled={!sdkSupported()} onChange={() => setMode('sdk')} />
-            En este navegador {sdkSupported() ? '(recomendado, fragmentos exactos)' : '(no disponible en iPhone/iPad)'}
+            <b>Suena en este navegador</b>: la música sale por este aparato (la compu o el celu del juez, o el parlante conectado a él). {sdkSupported() ? 'Recomendado: los fragmentos cortos son exactos.' : 'No disponible en iPhone/iPad.'}
           </label>
           <label><input type="radio" checked={mode === 'connect'} onChange={() => setMode('connect')} />
-            En la app de Spotify de otro dispositivo (Spotify Connect). Fragmentos de menos de 1 s salen imprecisos.
+            <b>App de Spotify (Spotify Connect)</b>: la música sale por la app de Spotify abierta en otro aparato (celular, compu, parlante inteligente) y esta página la maneja como control remoto. Útil en iPhone. Los fragmentos de menos de 1 s salen imprecisos.
           </label>
           <label><input type="radio" checked={mode === 'manual'} onChange={() => setMode('manual')} />
-            Sin reproductor: la música la pongo yo. La app solo cuenta el tiempo, los pulsadores y el puntaje.
+            Sin reproductor: <b>música manual</b>. La ponés vos por tu cuenta; la app solo cuenta el tiempo, los pulsadores y el puntaje.
           </label>
         </div>
         {mode === 'connect' && (
