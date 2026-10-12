@@ -419,3 +419,59 @@ test('Nueva partida con los mismos jugadores: puntajes en cero, mismos celulares
   await j.page.locator('.floorname', { hasText: 'Ana' }).waitFor();
   await j.ctx.close(); await ana.ctx.close();
 });
+
+// ---------- Segunda auditoría: autoridad temporal ----------
+
+/** Jugador por socket crudo: entra a la sala y saluda como un celular. */
+async function rawPlayer(room, name) {
+  const ws = await rawSocket();
+  const msgs = [];
+  ws.on('message', (b) => msgs.push(JSON.parse(b.toString())));
+  ws.send(JSON.stringify({ t: 'join', room, role: 'player', name }));
+  await until(() => msgs.some((m) => m.t === 'joined'), `${name} entra`);
+  ws.send(JSON.stringify({ t: 'msg', data: { k: 'hello', role: 'player', name } }));
+  return ws;
+}
+
+test('B02: una hora manipulada no gana la pulsación', async () => {
+  const j = await openJudge(browser);
+  const primero = await rawPlayer(j.room, 'Primero');
+  const segundo = await rawPlayer(j.room, 'Segundo');
+  await addTracks(j.page, ['Tema']);
+  await until(async () => (await gameState(j.page)).players.length === 2, 'los dos en la partida');
+  await start(j.page);
+  await sonar(j.page).click();
+  primero.send(JSON.stringify({ t: 'msg', data: { k: 'buzz', at: Date.now() } }));
+  await new Promise((r) => setTimeout(r, 30));
+  // Llega después, pero declara haber tocado 1 s antes.
+  segundo.send(JSON.stringify({ t: 'msg', data: { k: 'buzz', at: Date.now() - 1000 } }));
+  await j.page.locator('.floorname').waitFor();
+  assert.equal(await j.page.locator('.floorname').textContent(), 'Primero');
+  const ev = (await gameState(j.page)).round.events.filter((e) => e.kind === 'buzz');
+  assert.equal(ev.length, 1);
+  assert.ok(ev[0].reactionMs > 0, 'la reacción no queda en 0 por una hora inventada');
+  primero.close(); segundo.close();
+  await j.ctx.close();
+});
+
+for (const skew of [5000, -5000]) {
+  test(`B03: con el reloj del juez desfasado ${skew > 0 ? '+' : ''}${skew / 1000} s la reacción sigue siendo real`, async () => {
+    const j = await openJudge(browser, { clockSkewMs: skew });
+    await addTracks(j.page, ['Tema']);
+    await setSteps(j.page, '3');
+    const ana = await openPlayer(browser, j.room, 'Ana');
+    await ana.page.getByText('Esperando que arranque la partida').waitFor();
+    await start(j.page);
+    // Que el reloj sincronizado del juez ya tenga muestras.
+    await j.page.waitForTimeout(1200);
+    await sonar(j.page).click();
+    await ana.page.getByText('¡TOCÁ!').waitFor();
+    await ana.page.waitForTimeout(300);
+    await ana.page.locator('.bigbtn').tap();
+    await j.page.locator('.floorname', { hasText: 'Ana' }).waitFor();
+    const r = (await gameState(j.page)).round.events.find((e) => e.kind === 'buzz').reactionMs;
+    // Sin el arreglo: 0 ms con +5 s y ~5300 ms con -5 s.
+    assert.ok(r >= 300 && r < 2500, `reacción medida ${r} ms`);
+    await j.ctx.close(); await ana.ctx.close();
+  });
+}

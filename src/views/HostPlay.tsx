@@ -34,7 +34,9 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
     return guard(async () => {
       if (!player) throw new Error('No hay reproductor configurado. Elegí uno en el panel "Reproductor" de la derecha.');
       if (!player.ready) await player.init();
-      const at = Date.now();
+      // Misma base temporal que las pulsaciones (B03). Mide desde la orden de
+      // reproducir, no desde que el audio se oye.
+      const at = ctx.now();
       update((g) => E.markPlaying(g, at));
       try {
         await player.playSnippet(track.uri, track.startMs, len);
@@ -98,9 +100,8 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
   }, [track.uri, len, player, floor?.id]);
 
   const localBuzz = (pid: string) => {
-    // Los pulsadores en pantalla van por el mismo camino que los del celu, con reloj del host.
-    const at = ctx.conn.socket.online ? ctx.conn.socket.serverNow() : Date.now();
-    ctx.buzz(pid, at);
+    // Los pulsadores en pantalla van por el mismo camino que los del celu, en hora del servidor.
+    ctx.buzz(pid, ctx.now());
   };
 
   const phaseLabel: Record<string, string> = {

@@ -17,9 +17,18 @@ export function launch() {
   return chromium.launch(opts);
 }
 
-/** Abre el panel del juez en música manual y devuelve la página y el código de sala. */
-export async function openJudge(browser) {
+/**
+ * Abre el panel del juez en música manual y devuelve la página y el código de sala.
+ * `clockSkewMs` adelanta (o atrasa) el reloj del navegador del juez.
+ */
+export async function openJudge(browser, { clockSkewMs = 0 } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
+  if (clockSkewMs) {
+    await ctx.addInitScript((skew) => {
+      const real = Date.now.bind(Date);
+      Date.now = () => real() + skew;
+    }, clockSkewMs);
+  }
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));

@@ -67,9 +67,11 @@ export class HostConnection {
           if (d.k === 'hello') this.ev.onHello(m.from, d.role, d.name);
           else if (d.k === 'rename') this.ev.onRename(m.from, d.name);
           else if (d.k === 'buzz') {
-            // Preferimos el reloj sincronizado del jugador; si parece roto, usamos la llegada al servidor.
-            const arrival = typeof m.at === 'number' ? m.at : this.socket.serverNow();
-            const at = Number.isFinite(d.at) && Math.abs(d.at - arrival) < 2000 ? d.at : arrival;
+            // Autoridad del orden (B02): la hora en que el servidor recibió la
+            // pulsación. La hora que declara el celular no cuenta: cualquiera
+            // podría declarar una anterior. Costo: un celular con más latencia
+            // pierde esos milisegundos (en el mismo Wi-Fi, unas decenas).
+            const at = typeof m.at === 'number' && Number.isFinite(m.at) ? m.at : this.socket.serverNow();
             this.ev.onBuzz(m.from, at);
           }
           break;

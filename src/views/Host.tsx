@@ -34,6 +34,12 @@ export interface HostCtx {
   sfx: (name: SfxName, playerId?: string) => void;
   /** Pulsación (de celu o de pantalla), con instante en reloj del servidor. */
   buzz: (pid: string, at: number) => void;
+  /**
+   * Hora del servidor según el reloj sincronizado del juez (B03). Inicio del
+   * fragmento y pulsaciones usan esta misma base, así la reacción no depende
+   * de cuán desfasado esté el reloj de la compu del juez.
+   */
+  now: () => number;
   /** Saca a un jugador: de la partida y de la sala. */
   kick: (pid: string) => void;
   /** Celulares que piden entrar con la partida empezada. */
@@ -244,7 +250,7 @@ export function Host({ authError }: { authError?: string }) {
 
   const ctx: HostCtx = {
     game, update, room, online, peers, conn, player, playerStatus, setPlayer, setPlayerStatus,
-    localSfx, setLocalSfx, sfx: emitSfx, buzz: onBuzz, kick, loggedIn, setLoggedIn,
+    localSfx, setLocalSfx, sfx: emitSfx, buzz: onBuzz, now: () => conn.socket.serverNow(), kick, loggedIn, setLoggedIn,
     joinRequests, resolveJoin, roomChangedFrom, dismissRoomChanged: () => setRoomChangedFrom(undefined)
   };
 
