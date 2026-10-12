@@ -60,7 +60,7 @@ export function PlaylistEditor({ ctx, tracks, setTracks }: { ctx: HostCtx; track
   const setStart = (i: number, ms: number) => setTracks(tracks.map((t, j) => (j === i ? { ...t, startMs: Math.max(0, Math.min(t.durationMs - 1000, ms)) } : t)));
 
   const importPlaylist = (id: string) => run(async () => {
-    const { tracks: ts, skipped } = await playlistTracks(id);
+    const { tracks: ts, skipped, viaPublicPage } = await playlistTracks(id);
     const seen = new Set(tracks.map((t) => t.uri));
     const fresh = ts.filter((t) => !seen.has(t.uri));
     setTracks([...tracks, ...fresh]);
@@ -69,7 +69,8 @@ export function PlaylistEditor({ ctx, tracks, setTracks }: { ctx: HostCtx; track
     setImportInfo(
       `Se agregaron ${fresh.length} ${fresh.length === 1 ? 'canción' : 'canciones'}` +
       (already ? `; ${already} ya estaban en la lista` : '') +
-      (skipped ? `; se omitieron ${skipped} elementos que no son canciones disponibles (episodios, archivos locales, retirados o repetidos)` : '') + '.'
+      (skipped ? `; se omitieron ${skipped} elementos que no son canciones disponibles (episodios, archivos locales, retirados o repetidos)` : '') + '.' +
+      (viaPublicPage ? ' Se leyó desde la página pública de Spotify: sin tapas de discos, y en listas muy largas puede traer sólo una parte.' : '')
     );
   });
   const [importInfo, setImportInfo] = useState<string>();
@@ -110,7 +111,7 @@ export function PlaylistEditor({ ctx, tracks, setTracks }: { ctx: HostCtx; track
 
         <div className="card">
           <h2>Importar playlist de Spotify</h2>
-          <p className="muted small">Desde 2026 Spotify solo deja que apps nuevas lean playlists creadas por vos (o donde colaborás). Para usar una oficial o de otra persona, copiá sus temas a una playlist tuya.</p>
+          <p className="muted small">Pegá el link de cualquier playlist pública: tuya, de otra persona o armada por Spotify. En Spotify: ⋯ → Compartir → Copiar enlace.</p>
           <div className="row">
             <input value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="Pegá el link de una playlist" className="grow" disabled={!ctx.loggedIn} />
             <button className="btn" disabled={busy || !parsePlaylistId(importUrl)} onClick={() => importPlaylist(parsePlaylistId(importUrl)!)}>Importar</button>

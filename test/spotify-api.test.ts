@@ -46,3 +46,23 @@ test('toTrack tolera campos faltantes', () => {
   assert.equal(t.album, '');
   assert.equal(t.image, undefined);
 });
+
+test('playlist de otra persona: si la API la rechaza, se lee desde la página pública', async () => {
+  const pedidos: string[] = [];
+  g.fetch = async (url: string) => {
+    pedidos.push(String(url));
+    if (String(url).startsWith('https://api.spotify.com')) return new Response(JSON.stringify({ error: { status: 403, message: 'Forbidden' } }), { status: 403 });
+    return new Response(JSON.stringify({ name: 'De Juan', tracks: [{ id: 'z'.repeat(22), uri: `spotify:track:${'z'.repeat(22)}`, name: 'Ajena', artists: 'Banda', durationMs: 200_000 }] }), { status: 200 });
+  };
+  const r = await playlistTracks('pqrstuvwxyzABCDEFGHIJK');
+  assert.equal(r.viaPublicPage, true);
+  assert.deepEqual(r.tracks.map((t) => [t.name, t.artists, t.startMs]), [['Ajena', 'Banda', 0]]);
+  assert.ok(pedidos.at(-1)!.endsWith('/api/spotify/playlist/pqrstuvwxyzABCDEFGHIJK'));
+});
+
+test('playlist privada o vacía: el mensaje explica qué revisar', async () => {
+  g.fetch = async (url: string) => (String(url).startsWith('https://api.spotify.com')
+    ? new Response('{}', { status: 404 })
+    : new Response(JSON.stringify({ error: 'sin_canciones' }), { status: 404 }));
+  await assert.rejects(playlistTracks('pqrstuvwxyzABCDEFGHIJK'), /tiene que ser pública/);
+});

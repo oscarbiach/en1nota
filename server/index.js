@@ -9,6 +9,7 @@ import crypto from 'node:crypto';
 import express from 'express';
 import { WebSocketServer } from 'ws';
 import { cleanName, cleanRoom, hostData, isId, isKey, isSecret, peerData } from './validate.js';
+import { PLAYLIST_ID, parseEmbed } from './spotify-embed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
@@ -77,6 +78,39 @@ app.get('/healthz', (_req, res) => {
     rejected: stats.rejected
   });
 });
+// Playlists de otras personas: lee la página pública embed de Spotify (ver
+// spotify-embed.js). Con caché y límite global para no usar este servidor
+// como intermediario de nadie.
+const EMBED_BASE = process.env.SPOTIFY_EMBED_BASE || 'https://open.spotify.com';
+const EMBED_CACHE_MS = 10 * 60 * 1000;
+const embedCache = new Map();
+const embedBucket = { tokens: 20, last: Date.now() };
+app.get('/api/spotify/playlist/:id', async (req, res) => {
+  const id = req.params.id;
+  if (!PLAYLIST_ID.test(id)) return res.status(400).json({ error: 'id_invalido' });
+  const hit = embedCache.get(id);
+  if (hit && Date.now() - hit.at < EMBED_CACHE_MS) return res.json(hit.data);
+  const now = Date.now();
+  embedBucket.tokens = Math.min(20, embedBucket.tokens + ((now - embedBucket.last) / 60_000) * 20);
+  embedBucket.last = now;
+  if (embedBucket.tokens < 1) return res.status(429).json({ error: 'demasiadas_consultas' });
+  embedBucket.tokens -= 1;
+  try {
+    const r = await fetch(`${EMBED_BASE}/embed/playlist/${id}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (En1Nota)', 'Accept-Language': 'es' },
+      signal: AbortSignal.timeout(10_000)
+    });
+    if (!r.ok) return res.status(502).json({ error: 'spotify_no_respondio', status: r.status });
+    const data = parseEmbed(await r.text());
+    if (data.tracks.length === 0) return res.status(404).json({ error: 'sin_canciones' });
+    if (embedCache.size > 200) embedCache.delete(embedCache.keys().next().value);
+    embedCache.set(id, { at: Date.now(), data });
+    res.json(data);
+  } catch {
+    res.status(502).json({ error: 'spotify_no_respondio' });
+  }
+});
+
 app.use(express.static(DIST, { index: 'index.html', maxAge: '1h' }));
 app.get(/.*/, (_req, res) => res.sendFile(path.join(DIST, 'index.html')));
 

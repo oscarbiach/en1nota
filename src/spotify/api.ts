@@ -121,9 +121,6 @@ export function parsePlaylistId(input: string): string | null {
 
 const TRACK_FIELDS = 'type,id,uri,name,duration_ms,is_local,artists(name),album(name,images)';
 
-/** Los códigos que empiezan así son playlists armadas por Spotify (editoriales o algorítmicas). */
-export const isSpotifyOwnedPlaylist = (id: string) => /^37i9dQZ/.test(id);
-
 type ItemsPage = { items: Array<{ item?: ApiTrack | null; track?: ApiTrack | null }>; next: string | null };
 
 /**
@@ -132,7 +129,28 @@ type ItemsPage = { items: Array<{ item?: ApiTrack | null; track?: ApiTrack | nul
  * por el mismo usuario o donde colabora. Probamos el endpoint nuevo y, si el
  * servidor todavía es viejo, el anterior.
  */
-export async function playlistTracks(playlistId: string): Promise<{ tracks: Track[]; skipped: number }> {
+/**
+ * Playlist pública de cualquier usuario, leída por el servidor desde la
+ * página embed de Spotify (server/spotify-embed.js). No es una vía oficial:
+ * puede dejar de funcionar si Spotify cambia esa página. Sin tapas de discos.
+ */
+export async function publicPlaylist(playlistId: string, apiStatus = 0): Promise<Track[]> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/spotify/playlist/${encodeURIComponent(playlistId)}`);
+  } catch {
+    throw new Error('No se pudo leer la playlist: sin conexión con el servidor del juego.');
+  }
+  const j = (await res.json().catch(() => ({}))) as { tracks?: Array<{ id: string; uri: string; name: string; artists: string; durationMs: number }>; error?: string };
+  if (res.ok && Array.isArray(j.tracks)) {
+    return j.tracks.map((t) => ({ id: t.id, uri: t.uri, name: t.name, artists: t.artists ?? '', album: '', durationMs: t.durationMs ?? 0, startMs: 0 }));
+  }
+  if (j.error === 'sin_canciones') throw new Error('No se encontraron canciones: la playlist puede ser privada, estar vacía o tener sólo podcasts. Si es de otra persona, tiene que ser pública.');
+  if (res.status === 429) throw new Error('Demasiadas consultas de playlists seguidas. Esperá un minuto y probá de nuevo.');
+  throw new Error(`Spotify no dejó leer la playlist ${playlistId}${apiStatus ? ` (API: ${apiStatus})` : ''} y su página pública tampoco respondió. Revisá que el link sea de una playlist pública.`);
+}
+
+export async function playlistTracks(playlistId: string): Promise<{ tracks: Track[]; skipped: number; viaPublicPage?: boolean }> {
   const out: Track[] = [];
   const seen = new Set<string>();
   let skipped = 0;
@@ -153,10 +171,11 @@ export async function playlistTracks(playlistId: string): Promise<{ tracks: Trac
     }
   }
   if (!page) {
-    if (isSpotifyOwnedPlaylist(playlistId)) {
-      throw new Error('Esta es una playlist armada por Spotify (su código empieza con 37i9dQZ). Spotify no deja leerlas desde apps nuevas: creá una playlist tuya, agregale estos temas y pegá ese link.');
-    }
-    throw new Error(`Spotify respondió ${lastStatus} al leer la playlist ${playlistId}. Desde 2026 las apps nuevas solo pueden leer playlists creadas por vos (o donde sos colaborador). Usá "Ver mis playlists".`);
+    // La API oficial sólo deja leer playlists propias: probamos la página
+    // pública de Spotify a través de nuestro servidor (otras personas,
+    // playlists armadas por Spotify).
+    const tracks = await publicPlaylist(playlistId, lastStatus);
+    return { tracks, skipped: 0, viaPublicPage: true };
   }
   for (;;) {
     for (const it of page.items ?? []) {
