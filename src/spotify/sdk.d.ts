@@ -10,6 +10,8 @@ declare namespace Spotify {
     id: string | null;
     name: string;
     duration_ms: number;
+    /** Si Spotify sustituyó el tema pedido por otra versión disponible en la región. */
+    linked_from?: { uri: string | null; id: string | null };
   }
   interface PlaybackState {
     paused: boolean;

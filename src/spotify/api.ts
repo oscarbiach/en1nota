@@ -1,11 +1,13 @@
-import { getAccessToken } from './auth';
-import type { Track } from '../game/types';
+import { getAccessToken } from './auth.ts';
+import type { Track } from '../game/types.ts';
 
 const BASE = 'https://api.spotify.com/v1';
 
 export class SpotifyError extends Error {
-  constructor(public status: number, message: string) {
+  status: number;
+  constructor(status: number, message: string) {
     super(message);
+    this.status = status;
   }
 }
 
@@ -36,13 +38,15 @@ export async function api<T = unknown>(path: string, init: RequestInit = {}, ret
 }
 
 interface ApiTrack {
+  /** 'track' o 'episode': una playlist puede tener los dos. */
+  type?: string;
   id: string;
   uri: string;
   name: string;
   duration_ms: number;
   is_local?: boolean;
-  artists: Array<{ name: string }>;
-  album: { name: string; images: Array<{ url: string; width: number }> };
+  artists?: Array<{ name: string }>;
+  album?: { name: string; images: Array<{ url: string; width: number }> };
 }
 
 export function toTrack(t: ApiTrack): Track {
@@ -51,7 +55,7 @@ export function toTrack(t: ApiTrack): Track {
     id: t.id,
     uri: t.uri,
     name: t.name,
-    artists: t.artists.map((a) => a.name).join(', '),
+    artists: (t.artists ?? []).map((a) => a.name).join(', '),
     album: t.album?.name ?? '',
     image: img?.url,
     durationMs: t.duration_ms,
@@ -115,7 +119,7 @@ export function parsePlaylistId(input: string): string | null {
   return null;
 }
 
-const TRACK_FIELDS = 'id,uri,name,duration_ms,is_local,artists(name),album(name,images)';
+const TRACK_FIELDS = 'type,id,uri,name,duration_ms,is_local,artists(name),album(name,images)';
 
 /** Los códigos que empiezan así son playlists armadas por Spotify (editoriales o algorítmicas). */
 export const isSpotifyOwnedPlaylist = (id: string) => /^37i9dQZ/.test(id);
@@ -128,8 +132,10 @@ type ItemsPage = { items: Array<{ item?: ApiTrack | null; track?: ApiTrack | nul
  * por el mismo usuario o donde colabora. Probamos el endpoint nuevo y, si el
  * servidor todavía es viejo, el anterior.
  */
-export async function playlistTracks(playlistId: string): Promise<Track[]> {
+export async function playlistTracks(playlistId: string): Promise<{ tracks: Track[]; skipped: number }> {
   const out: Track[] = [];
+  const seen = new Set<string>();
+  let skipped = 0;
   const attempts: Array<(limit?: number) => string> = [
     (l) => `/playlists/${playlistId}/items?fields=next,items(item(${TRACK_FIELDS}))${l ? `&limit=${l}` : ''}`,
     (l) => `/playlists/${playlistId}/items${l ? `?limit=${l}` : ''}`,
@@ -153,14 +159,19 @@ export async function playlistTracks(playlistId: string): Promise<Track[]> {
     throw new Error(`Spotify respondió ${lastStatus} al leer la playlist ${playlistId}. Desde 2026 las apps nuevas solo pueden leer playlists creadas por vos (o donde sos colaborador). Usá "Ver mis playlists".`);
   }
   for (;;) {
-    for (const it of page.items) {
-      const t = it.item ?? it.track;
-      if (t && t.id && !t.is_local) out.push(toTrack(t));
+    for (const it of page.items ?? []) {
+      // B05: sólo canciones de Spotify. Episodios, archivos locales, ítems
+      // retirados (null) o repetidos se omiten y se cuentan.
+      const t = it?.item ?? it?.track;
+      const song = t && (t.type ?? 'track') === 'track' && !t.is_local && typeof t.id === 'string' && typeof t.uri === 'string' && typeof t.name === 'string';
+      if (!song || seen.has(t.uri)) { skipped++; continue; }
+      seen.add(t.uri);
+      out.push(toTrack(t));
     }
     if (!page.next) break;
     page = await api<ItemsPage>(page.next);
   }
-  return out;
+  return { tracks: out, skipped };
 }
 
 // ---------- reproducción (Spotify Connect) ----------

@@ -60,11 +60,19 @@ export function PlaylistEditor({ ctx, tracks, setTracks }: { ctx: HostCtx; track
   const setStart = (i: number, ms: number) => setTracks(tracks.map((t, j) => (j === i ? { ...t, startMs: Math.max(0, Math.min(t.durationMs - 1000, ms)) } : t)));
 
   const importPlaylist = (id: string) => run(async () => {
-    const ts = await playlistTracks(id);
+    const { tracks: ts, skipped } = await playlistTracks(id);
     const seen = new Set(tracks.map((t) => t.uri));
-    setTracks([...tracks, ...ts.filter((t) => !seen.has(t.uri))]);
+    const fresh = ts.filter((t) => !seen.has(t.uri));
+    setTracks([...tracks, ...fresh]);
     setImportUrl('');
+    const already = ts.length - fresh.length;
+    setImportInfo(
+      `Se agregaron ${fresh.length} ${fresh.length === 1 ? 'canción' : 'canciones'}` +
+      (already ? `; ${already} ya estaban en la lista` : '') +
+      (skipped ? `; se omitieron ${skipped} elementos que no son canciones disponibles (episodios, archivos locales, retirados o repetidos)` : '') + '.'
+    );
   });
+  const [importInfo, setImportInfo] = useState<string>();
 
   const preview = (t: Track, len = 1500) => run(async () => {
     if (!ctx.player?.ready) throw new Error('Activá el reproductor en la pestaña Spotify');
@@ -110,6 +118,7 @@ export function PlaylistEditor({ ctx, tracks, setTracks }: { ctx: HostCtx; track
           <div className="row mt">
             <button className="btn sm" disabled={!ctx.loggedIn || busy} onClick={() => run(async () => setMine(await myPlaylists()))}>Ver mis playlists</button>
           </div>
+          {importInfo && <div className="notice small mt" role="status">{importInfo}</div>}
           {mine.length > 0 && (
             <ul className="list mt" style={{ maxHeight: 260, overflow: 'auto' }}>
               {mine.map((p) => (

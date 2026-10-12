@@ -79,13 +79,22 @@ export async function beginLogin(returnHash = location.hash) {
   location.assign(url.toString());
 }
 
+/** Rechazo del servidor de cuentas de Spotify, con su código HTTP. */
+class TokenError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function tokenRequest(body: Record<string, string>): Promise<TokenSet> {
   const res = await fetch('https://accounts.spotify.com/api/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ client_id: getClientId(), ...body })
   });
-  if (!res.ok) throw new Error(`Spotify token: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new TokenError(res.status, `Spotify token: ${res.status} ${await res.text()}`);
   const j = await res.json();
   const prev = loadToken();
   const t: TokenSet = {
@@ -127,7 +136,13 @@ export async function getAccessToken(): Promise<string> {
   try {
     return (await refreshing).accessToken;
   } catch (e) {
-    saveToken(null);
-    throw e;
+    // B08: sólo un rechazo de las credenciales (400/401, p. ej. invalid_grant)
+    // cierra la sesión. Sin red, Spotify caído (5xx) o limitando (429) es
+    // transitorio: se conserva el refresh token para reintentar.
+    if (e instanceof TokenError && (e.status === 400 || e.status === 401)) {
+      saveToken(null);
+      throw new Error('La sesión de Spotify venció o se revocó: conectá de nuevo.');
+    }
+    throw new Error('No se pudo renovar el acceso a Spotify (sin conexión o Spotify no responde). Reintentá en un momento.');
   }
 }

@@ -23,6 +23,13 @@ export class Op {
     hs.forEach((h) => h());
   }
 
+  /** Ejecuta `fn` si la operación se cancela. Devuelve cómo desuscribirse. */
+  onCancel(fn: () => void): () => void {
+    if (this.cancelled) { fn(); return () => {}; }
+    this.hooks.add(fn);
+    return () => { this.hooks.delete(fn); };
+  }
+
   /** Espera `p`; si la operación se cancela antes, rechaza con Cancelled. */
   wait<T>(p: Promise<T>): Promise<T> {
     if (this.cancelled) {

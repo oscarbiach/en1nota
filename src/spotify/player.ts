@@ -8,11 +8,11 @@
 //  - ManualPlayer (manual.ts): sin Spotify, sólo cuenta el tiempo.
 // Todos cumplen el contrato de run.ts: cada operación termina siempre, y una
 // nueva (o stop) cancela la anterior.
-import { getAccessToken } from './auth';
-import { devices, pauseRemote, playUri, transferTo, type Device } from './api';
-import { Runner, runSnippet, type SnippetResult } from './run';
+import { getAccessToken } from './auth.ts';
+import { devices, pauseRemote, playUri, transferTo, type Device } from './api.ts';
+import { Runner, runSnippet, type Op, type SnippetResult } from './run.ts';
 
-export { ManualPlayer } from './manual';
+export { ManualPlayer } from './manual.ts';
 
 export type PlayerMode = 'sdk' | 'connect' | 'manual';
 
@@ -60,7 +60,6 @@ export class SdkPlayer implements SnippetPlayer {
   deviceId?: string;
   onStatus?: (s: string) => void;
   private player?: Spotify.Player;
-  private state: Spotify.PlaybackState | null = null;
   private stateWaiters: Array<(s: Spotify.PlaybackState) => void> = [];
   private runner = new Runner();
 
@@ -74,14 +73,7 @@ export class SdkPlayer implements SnippetPlayer {
       volume: 1
     });
     this.player = player;
-    player.addListener('player_state_changed', (s) => {
-      this.state = s;
-      if (s && !s.paused) {
-        const w = this.stateWaiters;
-        this.stateWaiters = [];
-        w.forEach((fn) => fn(s));
-      }
-    });
+    player.addListener('player_state_changed', (s) => this.handleState(s));
     for (const ev of ['initialization_error', 'authentication_error', 'account_error', 'playback_error'] as const) {
       player.addListener(ev, (e) => this.onStatus?.(`${ev}: ${e.message}`));
     }
@@ -101,16 +93,40 @@ export class SdkPlayer implements SnippetPlayer {
     try { await transferTo(this.deviceId, false); } catch { /* si falla, play?device_id= lo resuelve */ }
   }
 
-  private waitPlaying(uri: string, timeoutMs = 6000): Promise<Spotify.PlaybackState> {
+  /** Cada cambio de estado del SDK. Público para poder probarlo sin el SDK real. */
+  handleState(s: Spotify.PlaybackState | null) {
+    if (s) [...this.stateWaiters].forEach((fn) => fn(s));
+  }
+
+  /**
+   * Espera a que suene `uri` desde `startMs` (B01). Sólo cuenta un evento
+   * nuevo (no el último estado guardado, que puede ser de la reproducción
+   * anterior del mismo tema), no pausado, del tema pedido (o del que Spotify
+   * lo reemplazó por disponibilidad regional), y cerca de la posición pedida.
+   * Al resolverse, vencer o cancelarse la operación, se retira el listener.
+   */
+  private waitPlaying(uri: string, startMs: number, op: Op, timeoutMs = 6000): Promise<Spotify.PlaybackState> {
     return new Promise((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error('Spotify no arrancó a reproducir')), timeoutMs);
-      const check = (s: Spotify.PlaybackState) => {
-        if (s.track_window.current_track.uri === uri || !s.paused) { clearTimeout(t); resolve(s); }
-        else this.stateWaiters.push(check);
+      const done = () => {
+        clearTimeout(t);
+        off();
+        this.stateWaiters = this.stateWaiters.filter((w) => w !== check);
       };
-      if (this.state && !this.state.paused && this.state.track_window.current_track.uri === uri) { clearTimeout(t); resolve(this.state); return; }
+      const check = (s: Spotify.PlaybackState) => {
+        const cur = s.track_window?.current_track;
+        const sameTrack = !!cur && (cur.uri === uri || cur.linked_from?.uri === uri);
+        const nearStart = s.position >= startMs - 1500 && s.position <= startMs + 4000;
+        if (!s.paused && sameTrack && nearStart) { done(); resolve(s); }
+      };
+      const t = setTimeout(() => { done(); reject(new Error('Spotify no arrancó a reproducir')); }, timeoutMs);
+      const off = op.onCancel(done);
       this.stateWaiters.push(check);
     });
+  }
+
+  /** Cantidad de esperas activas (para verificar que no quedan colgadas). */
+  get pendingWaits() {
+    return this.stateWaiters.length;
   }
 
   async play(uri: string, startMs: number, maxMs?: number) {
@@ -118,8 +134,10 @@ export class SdkPlayer implements SnippetPlayer {
     const player = this.player;
     const op = this.runner.begin();
     await runSnippet(async () => {
+      const playing = this.waitPlaying(uri, startMs, op);
+      playing.catch(() => {}); // si play falla, el error que importa es ése
       await op.wait(playUri(this.deviceId, uri, startMs));
-      await op.wait(this.waitPlaying(uri));
+      await op.wait(playing);
       if (!maxMs) return;
       await op.sleep(maxMs);
       await player.pause();
@@ -131,8 +149,11 @@ export class SdkPlayer implements SnippetPlayer {
     const player = this.player;
     const op = this.runner.begin();
     return runSnippet(async () => {
+      // La espera se registra antes del play: el evento puede llegar enseguida.
+      const playing = this.waitPlaying(uri, startMs, op);
+      playing.catch(() => {}); // si play falla, el error que importa es ése
       await op.wait(playUri(this.deviceId, uri, startMs));
-      const s = await op.wait(this.waitPlaying(uri));
+      const s = await op.wait(playing);
       // Compensamos lo que ya avanzó entre que arrancó y nos enteramos.
       const already = Math.max(0, s.position - startMs);
       await op.sleep(Math.max(0, lenMs - already));
