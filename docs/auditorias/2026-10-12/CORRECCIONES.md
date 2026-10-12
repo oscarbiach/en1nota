@@ -19,6 +19,9 @@ relojes simulados, storage simulado, y en el navegador **música manual**.
 | B06 | Corregido | Validación y versión del esquema guardado; migración de la versión 0; lo irrecuperable se aparta a `en1nota.quarantine.*` y se informa, sin tocar listas ni historial válidos. La pantalla de error permite apartar sólo la partida. | `test/store.test.ts` (6), E2E "B06" con `{}` | Antes bucle de error; ahora recupera y avisa |
 | B07 | Corregido | Zoom permitido; `touch-action: manipulation` en botones. axe-core (WCAG 2.1 A/AA) en todas las pantallas: contraste de botones (3,57→4,95:1), etiquetas de campos y selectores, nombre del pulsador, píldoras de la TV, `prefers-reduced-motion`. Reflujo a 320 px. | `test/e2e/a11y.test.mjs` (5) | 0 violaciones automáticas |
 | Recursos | Corregido | Máximos de salas, conexiones e identidades por sala; límite de frecuencia por conexión; limpieza de identidades inactivas; métricas en `/healthz`. | `test/server-limits.test.js` (7) | Pasa; sin prueba de carga |
+| B01 | Corregido | La espera del SDK sólo acepta un evento nuevo, no pausado, del tema pedido (o su reemplazo regional `linked_from`) cerca de la posición pedida; cancelar o vencer retira el listener. | `test/sdk-player.test.ts` (5; incluye el caso exacto de la auditoría) | Pasa; SDK simulado |
+| B05 | Corregido | La importación conserva sólo canciones; episodios, locales, retirados y repetidos se omiten y se cuentan, y el editor lo informa. | `test/spotify-api.test.ts` (2) | Antes `reading 'map'`; ahora importa 3 y omite 4 |
+| B08 | Corregido | Sólo un rechazo de credenciales (400/401) cierra la sesión; sin red, 5xx o 429 conservan el refresh token. | `test/spotify-auth.test.ts` (4) | Antes borraba la sesión; ahora la conserva |
 
 Defectos adicionales encontrados al escribir las pruebas, ya corregidos:
 
@@ -29,19 +32,19 @@ Defectos adicionales encontrados al escribir las pruebas, ya corregidos:
 ## Verificación final
 
 - Tipos y compilación de producción: aprobados.
-- Pruebas sin navegador: 76 aprobadas (las 47 anteriores incluidas).
+- Pruebas sin navegador: 87 aprobadas (las 47 anteriores incluidas).
 - E2E: partida completa original + 28 aprobadas (las 16 anteriores incluidas).
 - `npm audit` completo: 0.
 
 ## Pendiente
 
-- **Spotify (decisión del dueño):** la política de Spotify prohíbe juegos y
-  trivias. B01 (evento de otro tema aceptado), B05 (episodios en una
-  playlist) y B08 (sin red al renovar borra la sesión) quedan sin corregir
-  hasta decidir si se conserva la integración. El modo manual funciona sin
-  Spotify.
-- **`ROOM_SECRET` en Render:** sin esa variable, un reinicio exige reingresar
-  con código nuevo y confirmación del juez.
+- **Spotify:** el dueño decidió conservar la integración para uso privado
+  entre amigos, y se corrigieron B01, B05 y B08. La política de Spotify
+  prohíbe juegos y trivias sin distinguir uso privado: el riesgo es que
+  Spotify revoque el acceso de la app. No es base para publicar el juego.
+- **`ROOM_SECRET`:** declarado en `render.yaml` con `generateValue`. Se aplica
+  si el servicio de Render sincroniza el Blueprint; si no, hay que agregarlo
+  a mano. No se verificó en Render.
 - **R01:** la rama predeterminada sigue siendo la de investigación; la
   propuesta está en el README. No se cambiaron remotos ni despliegue.
 - **Sin probar:** Spotify real, iPhone/Android físicos, lectores de pantalla,
