@@ -54,7 +54,6 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
     void guard(async () => { setTimeout(() => { ctx.sfx('reveal'); }, 0); await player?.play(track.uri, track.startMs, game.settings.revealMs); });
   };
   const wrong = () => { ctx.sfx('wrong', floor?.id); update((g) => E.judgeWrong(g)); };
-  const hum = () => { ctx.sfx('hum', floor?.id); update((g) => E.judgeHum(g)); };
   const blank = () => { ctx.sfx('wrong', floor?.id); update((g) => E.judgeTimeout(g)); };
   const longer = () => update((g) => E.nextStep(g));
   const revealNow = () => {
@@ -73,7 +72,7 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
     update(E.markSnippetEnded); // "sonando" → pulsadores abiertos; sin efecto en otras fases
   };
 
-  // Teclas: 1-8 pulsadores (modo mesa), espacio = sonar, C/X/T = correcto/incorrecto/tarareo, N = siguiente.
+  // Teclas: 1-8 pulsadores (modo mesa), espacio = sonar, C/X = correcto/incorrecto, N = siguiente.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -90,7 +89,6 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
       if (g.phase === 'buzzed') {
         if (e.key === 'c' || e.key === 'C') correct();
         if (e.key === 'x' || e.key === 'X') wrong();
-        if (e.key === 't' || e.key === 'T') hum();
       }
       if ((e.key === 'n' || e.key === 'N') && g.phase === 'revealed') next();
     };
@@ -159,7 +157,6 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
               <div className="actions mt">
                 <button className="btn ok xl" onClick={correct}>✔ Correcto <small>(C)</small></button>
                 <button className="btn bad xl" onClick={wrong}>✘ Incorrecto <small>(X)</small></button>
-                <button className="btn warn xl" onClick={hum}>🎤 Tarareó <small>(T)</small></button>
                 <button className="btn xl" onClick={blank}>😶 En blanco</button>
               </div>
             </div>

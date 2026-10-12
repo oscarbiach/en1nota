@@ -265,7 +265,6 @@ function RulesTab({ settings, onChange }: { settings: Settings; onChange: (s: Se
         </div>
         <div className="row">
           <div className="field grow"><label htmlFor="cfg-wrong">Por fallar / quedarse en blanco</label><input id="cfg-wrong" type="number" value={settings.pointsWrong} onChange={(e) => onChange({ ...settings, pointsWrong: Number(e.target.value) })} /></div>
-          <div className="field grow"><label htmlFor="cfg-hum">Por tararear</label><input id="cfg-hum" type="number" value={settings.pointsHum} onChange={(e) => onChange({ ...settings, pointsHum: Number(e.target.value) })} /></div>
         </div>
         <label className="row"><input type="checkbox" checked={settings.lockOnFail} onChange={(e) => onChange({ ...settings, lockOnFail: e.target.checked })} />El que falla queda bloqueado en ese tema</label>
       </div>

@@ -193,15 +193,15 @@ export function judgeCorrect(g: GameState, at = Date.now()): GameState {
   };
 }
 
-function fail(g: GameState, kind: 'wrong' | 'hum' | 'timeout', at: number): GameState {
+function fail(g: GameState, kind: 'wrong' | 'timeout', at: number): GameState {
   const pid = g.round.buzzedPlayerId;
   if (g.phase !== 'buzzed' || !pid) return g;
-  const points = kind === 'hum' ? g.settings.pointsHum : g.settings.pointsWrong;
+  const points = g.settings.pointsWrong;
   const ev: RoundEvent = { kind, playerId: pid, step: g.round.step, points, at };
   const next = adjustScore(g, pid, points);
   const name = g.players.find((p) => p.id === pid)?.name ?? '';
   const locked = g.settings.lockOnFail ? [...g.round.lockedPlayerIds, pid] : g.round.lockedPlayerIds;
-  const label = kind === 'hum' ? 'tarareó' : kind === 'timeout' ? 'se quedó en blanco' : 'falló';
+  const label = kind === 'timeout' ? 'se quedó en blanco' : 'falló';
   return {
     ...next,
     phase: 'open',
@@ -211,7 +211,6 @@ function fail(g: GameState, kind: 'wrong' | 'hum' | 'timeout', at: number): Game
 }
 
 export const judgeWrong = (g: GameState, at = Date.now()) => fail(g, 'wrong', at);
-export const judgeHum = (g: GameState, at = Date.now()) => fail(g, 'hum', at);
 export const judgeTimeout = (g: GameState, at = Date.now()) => fail(g, 'timeout', at);
 
 /** El juez decide pasar a un fragmento más largo. */
@@ -319,8 +318,7 @@ export function awards(g: GameState): Array<{ k: string; v: string; sub: string 
   const st = computeStats(g);
   const out: Array<{ k: string; v: string; sub: string }> = [];
   if (st.fastest) out.push({ k: '⚡ Reflejo', v: st.fastest.player.name, sub: `acertó a los ${(st.fastest.reactionMs / 1000).toFixed(2)} s` });
-  if (st.mostImpulsive) out.push({ k: '🤦 Impulsivo', v: st.mostImpulsive.name, sub: `${st.mostImpulsive.wrong + st.mostImpulsive.hums} fallos` });
-  if (st.mostHums) out.push({ k: '🎤 Tarareador', v: st.mostHums.name, sub: `${st.mostHums.hums} tarareos` });
+  if (st.mostImpulsive) out.push({ k: '🤦 Impulsivo', v: st.mostImpulsive.name, sub: `${st.mostImpulsive.wrong} fallos` });
   if (st.mostNegative) out.push({ k: '📉 Bajo cero', v: st.mostNegative.name, sub: `terminó con ${st.mostNegative.score}` });
   out.push({ k: '🙈 Nadie la sacó', v: String(st.unsolved), sub: `de ${g.history.length} temas` });
   return out;
@@ -328,7 +326,7 @@ export function awards(g: GameState): Array<{ k: string; v: string; sub: string 
 
 // ---------- estadísticas ----------
 
-export type RankedPlayer = Player & { correct: number; wrong: number; hums: number; buzzes: number; bestReactionMs?: number; position: number };
+export type RankedPlayer = Player & { correct: number; wrong: number; buzzes: number; bestReactionMs?: number; position: number };
 
 /**
  * Criterio único de ranking para juez, TV e historial: más puntos, y a igual
@@ -349,14 +347,13 @@ export interface Stats {
   winnerIds: string[];
   fastest?: { player: Player; reactionMs: number; trackIndex: number };
   mostNegative?: RankedPlayer;
-  mostHums?: RankedPlayer;
   mostImpulsive?: RankedPlayer;
   unsolved: number;
 }
 
 export function computeStats(g: GameState): Stats {
   const rounds = g.phase === 'finished' ? g.history : [...g.history, g.round];
-  const per = new Map(g.players.map((p) => [p.id, { correct: 0, wrong: 0, hums: 0, buzzes: 0, best: undefined as number | undefined }]));
+  const per = new Map(g.players.map((p) => [p.id, { correct: 0, wrong: 0, buzzes: 0, best: undefined as number | undefined }]));
   let fastest: Stats['fastest'];
   let unsolved = 0;
   for (const r of rounds) {
@@ -378,26 +375,24 @@ export function computeStats(g: GameState): Stats {
           fastest = { player, reactionMs: buzz.reactionMs, trackIndex: r.trackIndex };
         }
       }
-      if (e.kind === 'wrong' || e.kind === 'timeout') s.wrong++;
-      if (e.kind === 'hum') s.hums++;
+      // 'hum' (tarareo) sólo aparece en partidas guardadas antes de quitarlo: cuenta como fallo.
+      if (e.kind === 'wrong' || e.kind === 'timeout' || e.kind === 'hum') s.wrong++;
     }
   }
   const ranking = rankStandings(g.players.map((p) => {
     const s = per.get(p.id)!;
-    return { ...p, correct: s.correct, wrong: s.wrong, hums: s.hums, buzzes: s.buzzes, bestReactionMs: s.best };
+    return { ...p, correct: s.correct, wrong: s.wrong, buzzes: s.buzzes, bestReactionMs: s.best };
   }));
   const winnerIds = ranking.filter((p) => p.position === 1).map((p) => p.id);
   const withScore = ranking.filter((p) => p.buzzes > 0);
   const mostNegative = ranking.length && ranking[ranking.length - 1].score < 0 ? ranking[ranking.length - 1] : undefined;
-  const mostHums = [...withScore].sort((a, b) => b.hums - a.hums)[0];
-  const mostImpulsive = [...withScore].sort((a, b) => b.wrong + b.hums - (a.wrong + a.hums))[0];
+  const mostImpulsive = [...withScore].sort((a, b) => b.wrong - a.wrong)[0];
   return {
     ranking,
     winnerIds,
     fastest,
     mostNegative,
-    mostHums: mostHums && mostHums.hums > 0 ? mostHums : undefined,
-    mostImpulsive: mostImpulsive && mostImpulsive.wrong + mostImpulsive.hums > 0 ? mostImpulsive : undefined,
+    mostImpulsive: mostImpulsive && mostImpulsive.wrong > 0 ? mostImpulsive : undefined,
     unsolved
   };
 }

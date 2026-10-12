@@ -28,7 +28,6 @@ export interface Settings {
   /** Puntos por acertar en cada pasada (si faltan, se usa el último). */
   pointsCorrect: number[];
   pointsWrong: number;
-  pointsHum: number;
   /** Ventana para ordenar pulsaciones casi simultáneas. */
   buzzWindowMs: number;
   /** Cuánto suena la canción al revelarla. */
@@ -46,6 +45,7 @@ export type Phase =
   | 'revealed'  // se mostró la canción
   | 'finished';
 
+/** 'hum' (tarareo) ya no se genera: sólo puede venir de partidas guardadas antes de quitarlo. */
 export type RoundEventKind = 'buzz' | 'correct' | 'wrong' | 'hum' | 'timeout' | 'replay' | 'reveal';
 
 export interface RoundEvent {
@@ -130,7 +130,6 @@ export const DEFAULT_SETTINGS: Settings = {
   steps: [400, 1200, 3000, 8000],
   pointsCorrect: [1],
   pointsWrong: -1,
-  pointsHum: -1,
   buzzWindowMs: 150,
   revealMs: 12000,
   lockOnFail: true

@@ -63,11 +63,18 @@ test('error resta, bloquea al jugador y deja abierto para el resto', () => {
   assert.equal(E.stepMs(g.settings, g.round.step), 1200);
 });
 
-test('tarareo aplica su propia penalización', () => {
-  let g = E.markPlaying({ ...setup(), settings: { ...E.newGame().settings, pointsHum: -2 } });
+test('ya no existe el tarareo: tararear y acertar es Correcto', () => {
+  assert.equal((E as Record<string, unknown>).judgeHum, undefined);
+  assert.equal('pointsHum' in E.newGame().settings, false);
+});
+
+test('un tarareo de una partida guardada vieja cuenta como fallo en las estadísticas', () => {
+  let g = E.markPlaying(setup(), 0);
   g = E.resolveBuzzes(E.receiveBuzz(g, { playerId: 'c', at: 5 }));
-  g = E.judgeHum(g);
-  assert.equal(g.players[2].score, -2);
+  g = E.judgeWrong(g);
+  g = { ...g, round: { ...g.round, events: g.round.events.map((e) => (e.kind === 'wrong' ? { ...e, kind: 'hum' as const } : e)) } };
+  const st = E.computeStats(E.finishGame(g));
+  assert.equal(st.ranking.find((p) => p.id === 'c')?.wrong, 1);
 });
 
 test('puntos por pasada configurables', () => {

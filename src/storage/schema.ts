@@ -53,7 +53,6 @@ function parseSettings(v: unknown): Settings {
     steps: numArr(s.steps) ? (s.steps as number[]) : DEFAULT_SETTINGS.steps,
     pointsCorrect: numArr(s.pointsCorrect) ? (s.pointsCorrect as number[]) : DEFAULT_SETTINGS.pointsCorrect,
     pointsWrong: isNum(s.pointsWrong) ? s.pointsWrong : DEFAULT_SETTINGS.pointsWrong,
-    pointsHum: isNum(s.pointsHum) ? s.pointsHum : DEFAULT_SETTINGS.pointsHum,
     buzzWindowMs: isNum(s.buzzWindowMs) && s.buzzWindowMs >= 0 ? s.buzzWindowMs : DEFAULT_SETTINGS.buzzWindowMs,
     revealMs: isNum(s.revealMs) && s.revealMs > 0 ? s.revealMs : DEFAULT_SETTINGS.revealMs,
     lockOnFail: typeof s.lockOnFail === 'boolean' ? s.lockOnFail : DEFAULT_SETTINGS.lockOnFail

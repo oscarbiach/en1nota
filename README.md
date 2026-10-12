@@ -2,12 +2,12 @@
 
 Juego presencial para juntadas: el juez hace sonar un pedacito de una canción
 (a veces una sola nota), el que toca primero tiene que decir el nombre exacto o
-cantar la letra. Acertar suma, fallar resta, tararear resta.
+cantar la canción (tarareando también vale). Acertar suma, fallar resta.
 
 Es una PWA en español que corre en cualquier navegador:
 
 - **Juez**: maneja la música desde su Spotify Premium, ve quién tocó primero,
-  marca correcto / incorrecto / tarareo y avanza. Notebook, Android o iPhone.
+  marca correcto / incorrecto y avanza. Notebook, Android o iPhone.
 - **Jugadores**: entran con un código desde su celu y la pantalla entera es el
   pulsador. Sin instalar nada.
 - **Pantalla de TV** (opcional): puntajes, quién tiene la palabra, revelación
@@ -21,7 +21,6 @@ Es una PWA en español que corre en cualquier navegador:
 |---|---|
 | Toca primero y acierta | suma los puntos de esa pasada (por defecto +1) |
 | Toca y falla / se queda en blanco | resta (por defecto −1) y queda bloqueado en ese tema |
-| Toca y tararea el instrumento | resta (por defecto −1), se cuenta aparte en las estadísticas |
 | Nadie acierta | el juez repite un fragmento más largo (0,4 s → 1,2 s → 3 s → 8 s) o revela |
 | Dos tocan casi juntos | se ordenan por reloj sincronizado con el servidor, ventana de 150 ms |
 
@@ -37,9 +36,9 @@ Todo es configurable en la pestaña **Reglas**: duraciones, puntos por pasada
 4. Los jugadores entran con el código o el QR. La TV se abre con el link de la
    pestaña Jugadores.
 5. **¡Empezar!** El juez toca *Sonar*, espera pulsaciones, juzga, y sigue.
-6. Al final: podio, premios (reflejo, impulsivo, tarareador, bajo cero) e historial.
+6. Al final: podio, premios (reflejo, impulsivo, bajo cero) e historial.
 
-Atajos del juez: `espacio` sonar · `C` correcto · `X` incorrecto · `T` tarareo ·
+Atajos del juez: `espacio` sonar · `C` correcto · `X` incorrecto ·
 `N` siguiente · `1`-`8` pulsadores en modo mesa. En la TV, `F` pantalla completa.
 
 ## Spotify

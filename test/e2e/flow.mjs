@@ -100,8 +100,9 @@ try {
   await player.getByText('¡TOCÁ!').waitFor();
   await player.locator('.bigbtn').dispatchEvent('pointerdown');
   await judge.locator('.floorname').getByText('Beto').waitFor();
-  await judge.getByRole('button', { name: /Tarareó/ }).click();
-  await judge.getByText('Beto tarareó (-1)').waitFor();
+  if (await judge.getByRole('button', { name: /Tarare/ }).count()) throw new Error('el botón de tarareo no debería existir');
+  await judge.getByRole('button', { name: /Incorrecto/ }).click();
+  await judge.getByText('Beto falló (-1)').waitFor();
   await player.getByText('Bloqueado').waitFor();
   await judge.getByRole('button', { name: 'Revelar (nadie)' }).click();
   await judge.getByText('Nadie la sacó').waitFor();
@@ -112,7 +113,7 @@ try {
   await tv.getByTestId('winner-line').getByText('🏆 Ganó Beto').waitFor();
   const judgeWinner = await judge.getByTestId('winner-line').textContent();
   if (judgeWinner !== '🏆 Ganó Beto') throw new Error(`juez y TV no coinciden: ${judgeWinner}`);
-  await tv.getByText('Tarareador').waitFor();
+  await tv.getByText('Impulsivo').waitFor();
   const scores = await tv.locator('.podium .p').allTextContents();
   log('podio TV:', scores.map((s) => s.replace(/\s+/g, ' ')).join(' | '));
   if (!scores.some((s) => s.includes('Beto') && s.includes('0')) || !scores.some((s) => s.includes('Ana') && s.includes('-1'))) throw new Error('puntajes finales incorrectos');

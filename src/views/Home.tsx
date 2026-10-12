@@ -63,7 +63,7 @@ export function Home() {
 
       <p className="muted small mt" style={{ opacity: .6 }}>Versión publicada: {__BUILD__}</p>
       <p className="muted small mt">
-        Reglas: el que toca primero tiene que decir el nombre exacto o cantar la letra. Si falla, se queda en blanco o tararea, resta puntos y queda bloqueado en ese tema.
+        Reglas: el que toca primero tiene que decir el nombre o cantar la canción (tarareando también vale). Si falla o se queda en blanco, resta puntos y queda bloqueado en ese tema.
       </p>
     </div>
   );
