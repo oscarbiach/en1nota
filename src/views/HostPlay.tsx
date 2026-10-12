@@ -53,8 +53,9 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
     update((g) => E.judgeCorrect(g));
     void guard(async () => { setTimeout(() => { ctx.sfx('reveal'); }, 0); await player?.play(track.uri, track.startMs, game.settings.revealMs); });
   };
-  const wrong = () => { ctx.sfx('wrong', floor?.id); update((g) => E.judgeWrong(g)); };
-  const blank = () => { ctx.sfx('wrong', floor?.id); update((g) => E.judgeTimeout(g)); };
+  // Si el juez estaba escuchando para verificar, se corta antes de seguir: los demás no deben oír más.
+  const wrong = () => { void player?.stop(); ctx.sfx('wrong', floor?.id); update((g) => E.judgeWrong(g)); };
+  const blank = () => { void player?.stop(); ctx.sfx('wrong', floor?.id); update((g) => E.judgeTimeout(g)); };
   const longer = () => update((g) => E.nextStep(g));
   const revealNow = () => {
     ctx.sfx('reveal');
@@ -159,6 +160,7 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
                 <button className="btn bad xl" onClick={wrong}>✘ Incorrecto <small>(X)</small></button>
                 <button className="btn xl" onClick={blank}>😶 En blanco</button>
               </div>
+              <VerifyPlayer key={`${track.uri}-${game.round.step}`} ctx={ctx} uri={track.uri} startMs={track.startMs} durationMs={track.durationMs} />
             </div>
           ) : game.phase === 'revealed' ? (
             <div className="actions">
@@ -232,6 +234,55 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Mientras alguien tiene la palabra, el juez puede escuchar la canción desde
+ * donde quiera para comprobar si lo que cantaron es esa canción. No cambia la
+ * partida: al marcar Correcto suena la revelación; al marcar Incorrecto o En
+ * blanco, se corta.
+ */
+function VerifyPlayer({ ctx, uri, startMs, durationMs }: { ctx: HostCtx; uri: string; startMs: number; durationMs: number }) {
+  const { player } = ctx;
+  const [pos, setPos] = useState(startMs);
+  const [playing, setPlaying] = useState(false);
+  const [err, setErr] = useState<string>();
+  const max = Math.max(durationMs - 1000, startMs);
+  const clamp = (ms: number) => Math.max(0, Math.min(max, ms));
+
+  if (!player || player.mode === 'manual') {
+    return <div className="card soft mt small muted" data-testid="verify">Para comprobar la canción, ponela vos (estás en música manual).</div>;
+  }
+  const listen = async (from = pos) => {
+    setErr(undefined);
+    try {
+      if (!player.ready) await player.init();
+      setPlaying(true);
+      await player.play(uri, from, 60_000);
+    } catch (e) {
+      setErr((e as Error).message);
+      setPlaying(false);
+    }
+  };
+  const stop = () => { setPlaying(false); void player.stop(); };
+
+  return (
+    <div className="card soft mt" data-testid="verify">
+      <h3>Comprobar la canción</h3>
+      <p className="muted small">Escuchá desde donde quieras para comparar con lo que cantaron. Si suena por el parlante lo oyen todos: mejor con auriculares.</p>
+      <label htmlFor="verify-pos">Desde {mmss(pos)} de {mmss(durationMs)}</label>
+      <input id="verify-pos" type="range" min={0} max={max} step={1000} value={pos} onChange={(e) => setPos(Number(e.target.value))} />
+      <div className="row mt">
+        <button className="btn sm" onClick={() => setPos(clamp(pos - 10_000))}>−10 s</button>
+        <button className="btn sm" onClick={() => setPos(clamp(pos + 10_000))}>+10 s</button>
+        <button className="btn sm" onClick={() => setPos(startMs)}>Inicio del fragmento</button>
+        <span className="grow" />
+        <button className="btn sm primary" onClick={() => void listen()}>🎧 Escuchar desde acá</button>
+        <button className="btn sm" disabled={!playing} onClick={stop}>■ Parar</button>
+      </div>
+      {err && <div className="error small mt">{err}</div>}
     </div>
   );
 }

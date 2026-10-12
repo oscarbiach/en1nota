@@ -534,3 +534,47 @@ test('B04: con el almacenamiento lleno se avisa y se puede descargar un respaldo
   assert.ok(!JSON.stringify(backup).includes('spotify.token'));
   await j.ctx.close();
 });
+
+// ---------- Pedidos del dueño ----------
+
+/** Juez con Spotify Connect simulado: las llamadas a api.spotify.com se registran y responden acá. */
+async function judgeWithFakeSpotify() {
+  const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
+  const calls = [];
+  await ctx.route('https://api.spotify.com/**', async (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname.replace('/v1', '');
+    calls.push({ method: req.method(), path, body: req.postData() ? JSON.parse(req.postData()) : null });
+    if (path === '/me/player/devices') return route.fulfill({ json: { devices: [{ id: 'fake', name: 'Parlante', type: 'Speaker', is_active: true }] } });
+    if (path === '/me') return route.fulfill({ json: { id: 'x', display_name: 'Prueba', product: 'premium' } });
+    return route.fulfill({ status: 204 });
+  });
+  const page = await ctx.newPage();
+  await page.goto(BASE);
+  await page.evaluate(() => {
+    localStorage.setItem('en1nota.spotify.token', JSON.stringify({ accessToken: 'FICTICIO-NO-SALE', expiresAt: Date.now() + 3_600_000 }));
+    localStorage.setItem('en1nota.playerMode', JSON.stringify('connect'));
+  });
+  await page.goto(`${BASE}/#/juez`);
+  return { ctx, page, calls };
+}
+
+test('el juez puede escuchar la canción para verificar mientras alguien tiene la palabra', async () => {
+  const { ctx, page, calls } = await judgeWithFakeSpotify();
+  await addTablePlayers(page, ['Ana']);
+  await addTracks(page, ['Tema Uno']);
+  await start(page);
+  await sonar(page).click();
+  await page.keyboard.press('1');
+  await page.locator('.floorname', { hasText: 'Ana' }).waitFor();
+  const verify = page.getByTestId('verify');
+  await verify.getByRole('button', { name: '+10 s' }).click();
+  await verify.getByRole('button', { name: '+10 s' }).click();
+  await verify.getByRole('button', { name: /Escuchar desde acá/ }).click();
+  await until(() => calls.some((c) => c.path === '/me/player/play' && c.body?.position_ms === 20_000), 'reproduce desde 0:20');
+  assert.equal((await gameState(page)).phase, 'buzzed', 'escuchar no cambia la partida');
+  const before = calls.length;
+  await page.getByRole('button', { name: /Incorrecto/ }).click();
+  await until(() => calls.slice(before).some((c) => c.path === '/me/player/pause'), 'al marcar Incorrecto se corta el audio');
+  await ctx.close();
+});
