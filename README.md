@@ -141,3 +141,18 @@ HTTPS, que Spotify exige):
 
 El plan gratis de Render duerme el servicio tras 15 min sin uso: la primera
 carga de la noche tarda unos 30 s. Conviene abrirlo antes de que llegue la gente.
+
+### Reinicios del servidor (`ROOM_SECRET`)
+
+Las salas viven en la memoria del servidor; un reinicio (deploy, o Render
+despertando el servicio) las borra. Las claves del juez y de cada celular son
+firmas con `ROOM_SECRET`, así que con esa variable **fija** el servidor las
+reconoce al volver: el juez recupera el mismo código y cada celular su puesto,
+sin hacer nada. Para configurarla en Render: *Environment → Add Environment
+Variable*, nombre `ROOM_SECRET`, valor largo y aleatorio (por ejemplo
+`openssl rand -hex 32`). No compartirla: quien la tenga puede firmar claves.
+
+Sin `ROOM_SECRET`, el servidor genera uno por proceso: todo funciona, pero tras
+un reinicio el juez recibe un código nuevo (lo muestra en rojo) y cada celular
+entra con ese código; el juez confirma quién es cada uno y conservan su
+puntaje. Nadie recupera un puesto sin esa confirmación.

@@ -239,3 +239,36 @@ test('A08: puntajes en cero y negativos', () => {
   assert.deepEqual(st.ranking.map((p) => [p.id, p.score, p.position]), [['ana', 0, 1], ['beto', -1, 2], ['cami', -2, 3]]);
   assert.deepEqual(E.toPublic(neg).final?.winnerIds, ['ana']);
 });
+
+// ---------- Regresión B09: reincorporar a un jugador con otra conexión ----------
+
+test('B09: reassignPlayer conserva puntaje, bloqueos e historial con el id nuevo', () => {
+  let g = E.markPlaying(setup(), 0);
+  g = E.resolveBuzzes(E.receiveBuzz(g, { playerId: 'a', at: 10 }));
+  g = E.nextTrack(E.judgeCorrect(g)); // Ana +1 en el historial
+  g = E.resolveBuzzes(E.receiveBuzz(E.markPlaying(g, 0), { playerId: 'a', at: 10 }));
+  g = E.judgeWrong(g); // Ana -1 y bloqueada en el tema actual
+  const r = E.reassignPlayer(g, 'a', 'abcdef123456');
+  const ana = r.players.find((p) => p.name === 'Ana')!;
+  assert.equal(ana.id, 'abcdef123456');
+  assert.equal(ana.score, 0);
+  assert.equal(ana.remote, true);
+  assert.deepEqual(r.round.lockedPlayerIds, ['abcdef123456']);
+  assert.equal(r.history[0].solvedBy, 'abcdef123456');
+  assert.ok(!JSON.stringify(r).includes('"a"'), 'no queda rastro del id viejo');
+  assert.equal(E.canBuzz(r, 'abcdef123456'), false, 'sigue bloqueada en este tema');
+  const st = E.computeStats(E.finishGame(r));
+  assert.equal(st.ranking.find((p) => p.id === 'abcdef123456')?.correct, 1);
+});
+
+test('B09: reassignPlayer no pisa a otro jugador ni acepta ids inexistentes', () => {
+  const g = setup();
+  assert.equal(E.reassignPlayer(g, 'a', 'b'), g);
+  assert.equal(E.reassignPlayer(g, 'zz', 'nuevo'), g);
+});
+
+test('isRemotePlayer reconoce celulares en partidas guardadas viejas', () => {
+  assert.equal(E.isRemotePlayer({ id: 'abcdef123456', name: 'x', color: '', score: 0, connected: true }), true);
+  assert.equal(E.isRemotePlayer({ id: 'k3j2h1lmn0', name: 'x', color: '', score: 0, connected: true }), false);
+  assert.equal(E.addPlayer(E.newGame(), 'Ana', 'abcdef123456', true).players[0].remote, true);
+});

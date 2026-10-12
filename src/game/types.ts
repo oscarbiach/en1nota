@@ -18,6 +18,8 @@ export interface Player {
   connected: boolean;
   /** Tecla asignada en modo mesa (1-8). */
   key?: string;
+  /** Juega desde su celular (no desde la pantalla del juez). */
+  remote?: boolean;
 }
 
 export interface Settings {

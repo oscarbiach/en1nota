@@ -78,6 +78,8 @@ export function parseHostMsg(d: unknown): HostMsg | null {
         : null;
     case 'rejected':
       return isStr(d.reason) ? { k: 'rejected', reason: d.reason } : null;
+    case 'waiting':
+      return isStr(d.reason) ? { k: 'waiting', reason: d.reason } : null;
     case 'sfx':
       return SFX.has(d.name as SfxName) && optStr(d.playerId, 64)
         ? { k: 'sfx', name: d.name as SfxName, playerId: d.playerId as string | undefined }

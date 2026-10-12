@@ -6,7 +6,7 @@ export const NAME_MAX = 24;
 const ID_RE = /^[a-f0-9]{8,32}$/;
 const SECRET_RE = /^[a-f0-9]{16,64}$/;
 const ROOM_RE = /^[A-Za-z]{4}$/;
-const HOST_KINDS = new Set(['state', 'welcome', 'rejected', 'sfx']);
+const HOST_KINDS = new Set(['state', 'welcome', 'rejected', 'waiting', 'sfx']);
 
 const isObj = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -22,7 +22,8 @@ export function cleanRoom(v) {
 
 export const isId = (v) => typeof v === 'string' && ID_RE.test(v);
 export const isSecret = (v) => typeof v === 'string' && SECRET_RE.test(v);
-export const isKey = (v) => typeof v === 'string' && /^[a-f0-9]{24}$/.test(v);
+/** Clave de juez: nonce de 16 hex + firma de 32 hex. */
+export const isKey = (v) => typeof v === 'string' && /^[a-f0-9]{48}$/.test(v);
 
 /**
  * Mensaje de jugador/pantalla hacia el juez.

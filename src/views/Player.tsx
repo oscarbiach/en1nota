@@ -34,7 +34,8 @@ export function PlayerView({ room }: { room: string }) {
       </div>
     );
   }
-  return <Buzzer room={room} name={name.trim()} />;
+  // key: al cambiar de sala, nada de la anterior (identidad, estado) sobrevive.
+  return <Buzzer key={room} room={room} name={name.trim()} />;
 }
 
 function Buzzer({ room, name }: { room: string; name: string }) {
@@ -42,6 +43,7 @@ function Buzzer({ room, name }: { room: string; name: string }) {
   const [me, setMe] = useState<{ playerId: string; color: string } | null>(null);
   const [state, setState] = useState<PublicState | null>(null);
   const [rejected, setRejected] = useState<string>();
+  const [waiting, setWaiting] = useState<string>();
   const conn = useRef<PeerConnection>(null);
   const lastBuzz = useRef(0);
 
@@ -50,8 +52,9 @@ function Buzzer({ room, name }: { room: string; name: string }) {
       onStatus: setStatus,
       onHost: (m: HostMsg) => {
         if (m.k === 'state') setState(m.state);
-        else if (m.k === 'welcome') setMe({ playerId: m.playerId, color: m.color });
-        else if (m.k === 'rejected') setRejected(m.reason);
+        else if (m.k === 'welcome') { setMe({ playerId: m.playerId, color: m.color }); setWaiting(undefined); setRejected(undefined); }
+        else if (m.k === 'waiting') setWaiting(m.reason);
+        else if (m.k === 'rejected') { setRejected(m.reason); setWaiting(undefined); }
         else if (m.k === 'sfx') {
           // Cada celu suena solo con su propio pulsador; el resto lo pone la TV o el juez.
           if (m.name === 'buzz') { if (m.playerId === conn.current?.pid) playSfx('buzz', 0); }
@@ -91,6 +94,7 @@ function Buzzer({ room, name }: { room: string; name: string }) {
   let cls = 'off';
   if (rejected) { label = 'Sin lugar'; sub = rejected; }
   else if (status !== 'joined') { label = '…'; sub = STATUS_TEXT[status]; }
+  else if (!mine && waiting) { label = 'Esperando al juez'; sub = waiting; }
   else if (!mine) { label = 'Esperando'; sub = 'El juez todavía no te agregó'; }
   else if (state?.phase === 'lobby') { label = 'Listo'; sub = 'Esperando que arranque la partida'; }
   else if (state?.phase === 'finished') { label = 'Fin'; sub = 'Mirá el resultado en la tele'; }
@@ -121,11 +125,27 @@ function Buzzer({ room, name }: { room: string; name: string }) {
           <small>{sub}</small>
         </button>
       )}
+      {(status === 'no_room' || status === 'closed') && <OtherRoom current={room} />}
       <div className="row between small muted">
         <span>{state ? `Tema ${state.trackIndex + 1}/${state.trackCount}` : ''}</span>
         <span>{state?.notice ?? ''}</span>
         <button className="btn sm ghost" onClick={() => navigate('/')}>Salir</button>
       </div>
+    </div>
+  );
+}
+
+/** La sala ya no existe (p. ej. el servidor se reinició): entrar con el código que muestra el juez. */
+function OtherRoom({ current }: { current: string }) {
+  const [code, setCode] = useState('');
+  const clean = code.trim().toUpperCase();
+  const go = () => { if (clean.length === 4 && clean !== current) navigate(`/jugar?sala=${clean}`); };
+  return (
+    <div className="row mb">
+      <input aria-label="Código nuevo de la sala" placeholder="Código nuevo" value={code} maxLength={4}
+        onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && go()}
+        style={{ textTransform: 'uppercase', letterSpacing: '.3em', fontWeight: 800 }} className="grow" />
+      <button className="btn primary" disabled={clean.length !== 4 || clean === current} onClick={go}>Entrar</button>
     </div>
   );
 }

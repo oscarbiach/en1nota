@@ -55,12 +55,42 @@ function cleanName(name: unknown): string {
   return typeof name === 'string' ? name.trim().slice(0, 24) : '';
 }
 
-export function addPlayer(g: GameState, name: string, id = newId()): GameState {
+export function addPlayer(g: GameState, name: string, id = newId(), remote = false): GameState {
   const clean = cleanName(name) || `Jugador ${g.players.length + 1}`;
   const used = new Set(g.players.map((p) => p.color));
   const color = PLAYER_COLORS.find((c) => !used.has(c)) ?? PLAYER_COLORS[g.players.length % PLAYER_COLORS.length];
-  const player: Player = { id, name: clean, color, score: 0, connected: true, key: String(g.players.length + 1) };
+  const player: Player = { id, name: clean, color, score: 0, connected: true, key: String(g.players.length + 1), ...(remote ? { remote } : {}) };
   return { ...g, players: [...g.players, player] };
+}
+
+/** Jugador con celular. Partidas guardadas antes de `remote`: los pid del servidor son 12 hex. */
+export function isRemotePlayer(p: Player): boolean {
+  return p.remote ?? /^[a-f0-9]{12}$/.test(p.id);
+}
+
+/**
+ * Pasa el puesto de un jugador a otra conexión (B09): el juez confirmó que
+ * quien entró con `toId` es el mismo `fromId`, p. ej. tras un reinicio del
+ * servidor o si su celular perdió la sesión. Conserva puntaje, color,
+ * bloqueos e historial; sólo cambia el identificador en toda la partida.
+ */
+export function reassignPlayer(g: GameState, fromId: string, toId: string): GameState {
+  if (fromId === toId || !g.players.some((p) => p.id === fromId) || g.players.some((p) => p.id === toId)) return g;
+  const id = (x: string | undefined) => (x === fromId ? toId : x);
+  const round = (r: Round): Round => ({
+    ...r,
+    lockedPlayerIds: r.lockedPlayerIds.map((x) => id(x)!),
+    buzzedPlayerId: id(r.buzzedPlayerId),
+    solvedBy: id(r.solvedBy),
+    pending: r.pending.map((b) => ({ ...b, playerId: id(b.playerId)! })),
+    events: r.events.map((e) => (e.playerId === fromId ? { ...e, playerId: toId } : e))
+  });
+  return {
+    ...g,
+    players: g.players.map((p) => (p.id === fromId ? { ...p, id: toId, connected: true, remote: true } : p)),
+    round: round(g.round),
+    history: g.history.map(round)
+  };
 }
 
 export function removePlayer(g: GameState, id: string): GameState {

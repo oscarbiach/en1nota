@@ -1,13 +1,16 @@
 // Lado juez de la sala: crea/retoma la sala, recibe pulsaciones y difunde el estado público.
-import { Socket } from './socket';
-import type { HostMsg, PeerInfo, SfxName } from './protocol';
-import type { PublicState } from '../game/types';
-import { parsePeerMsg } from './validate';
+import { Socket } from './socket.ts';
+import type { HostMsg, PeerInfo, SfxName } from './protocol.ts';
+import type { PublicState } from '../game/types.ts';
+import { parsePeerMsg } from './validate.ts';
 
 const KEY_ROOM = 'en1nota.room';
 
 export interface HostEvents {
-  onRoom: (room: string) => void;
+  /** Sala confirmada. `previous` es la que tenía antes si cambió (p. ej. el servidor se reinició sin ROOM_SECRET). */
+  onRoom: (room: string, previous?: string) => void;
+  /** Lista completa de conexiones de la sala al (re)conectarse el juez. */
+  onRoster: (peers: PeerInfo[]) => void;
   onPeer: (p: PeerInfo) => void;
   onHello: (pid: string, role: 'player' | 'screen', name: string) => void;
   onRename: (pid: string, name: string) => void;
@@ -22,8 +25,13 @@ export class HostConnection {
   room?: string;
   private key?: string;
   private lastState?: PublicState;
+  /** Sala que teníamos antes de un `bad_key`, para avisar si cambió el código. */
+  private lostRoom?: string;
+  private ev: HostEvents;
 
-  constructor(private ev: HostEvents) {}
+  constructor(ev: HostEvents) {
+    this.ev = ev;
+  }
 
   start() {
     try {
@@ -34,13 +42,16 @@ export class HostConnection {
     this.socket.onOpen(() => this.socket.raw({ t: 'host', room: this.room, key: this.key }));
     this.socket.on((m) => {
       switch (m.t) {
-        case 'hosted':
+        case 'hosted': {
+          const previous = this.lostRoom && this.lostRoom !== m.room ? this.lostRoom : undefined;
+          this.lostRoom = undefined;
           this.room = m.room; this.key = m.key;
-          sessionStorage.setItem(KEY_ROOM, JSON.stringify({ room: m.room, key: m.key }));
-          this.ev.onRoom(m.room);
-          m.peers.forEach((p) => this.ev.onPeer(p));
+          try { sessionStorage.setItem(KEY_ROOM, JSON.stringify({ room: m.room, key: m.key })); } catch { /* sin storage */ }
+          this.ev.onRoom(m.room, previous);
+          this.ev.onRoster(m.peers);
           if (this.lastState) this.broadcastState(this.lastState);
           break;
+        }
         case 'peer':
           this.ev.onPeer(m);
           if (m.connected && this.lastState) this.sendTo(m.pid, { k: 'state', state: this.lastState, serverNow: this.socket.serverNow() });
@@ -64,7 +75,13 @@ export class HostConnection {
           break;
         }
         case 'error':
-          if (m.code === 'bad_key') { this.room = undefined; this.key = undefined; sessionStorage.removeItem(KEY_ROOM); this.socket.raw({ t: 'host' }); }
+          if (m.code === 'bad_key') {
+            // La sala ya no existe y no se pudo recuperar: pedimos una nueva.
+            this.lostRoom = this.room;
+            this.room = undefined; this.key = undefined;
+            try { sessionStorage.removeItem(KEY_ROOM); } catch { /* sin storage */ }
+            this.socket.raw({ t: 'host' });
+          }
           break;
       }
     });

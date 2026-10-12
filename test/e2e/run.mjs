@@ -26,7 +26,8 @@ let code = 1;
 try {
   await ready;
   const flow = await run(['test/e2e/flow.mjs']);
-  const regressions = await run(['--test', '--test-concurrency=1', 'test/e2e/regressions.test.mjs']);
+  // Cada archivo *.test.mjs corre en su proceso; restart.test.mjs maneja su propio servidor.
+  const regressions = await run(['--test', '--test-concurrency=1', 'test/e2e/*.test.mjs']);
   code = flow || regressions;
 } catch (e) {
   console.error(e);

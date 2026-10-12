@@ -13,6 +13,11 @@ import { HostPlay } from './HostPlay';
 import { Podium } from '../components/Podium';
 import { navigate } from '../App';
 
+export interface JoinRequest {
+  pid: string;
+  name: string;
+}
+
 export interface HostCtx {
   game: GameState;
   update: (fn: (g: GameState) => GameState) => void;
@@ -31,6 +36,13 @@ export interface HostCtx {
   buzz: (pid: string, at: number) => void;
   /** Saca a un jugador: de la partida y de la sala. */
   kick: (pid: string) => void;
+  /** Celulares que piden entrar con la partida empezada. */
+  joinRequests: JoinRequest[];
+  /** `target`: id del jugador que retoma, 'new' para sumarlo, 'reject' para rechazar. */
+  resolveJoin: (pid: string, target: string) => void;
+  /** Código anterior si la sala cambió durante la partida. */
+  roomChangedFrom?: string;
+  dismissRoomChanged: () => void;
   loggedIn: boolean;
   setLoggedIn: (v: boolean) => void;
 }
@@ -52,6 +64,10 @@ export function Host({ authError }: { authError?: string }) {
   const [localSfx, setLocalSfx] = useState(true);
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
   const [replaced, setReplaced] = useState(false);
+  /** Código anterior si la sala cambió (servidor reiniciado sin ROOM_SECRET). */
+  const [roomChangedFrom, setRoomChangedFrom] = useState<string>();
+  /** Celulares que entraron con la partida empezada y esperan que el juez diga quiénes son. */
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
   const buzzTimer = useRef<number>(undefined);
   const connRef = useRef<HostConnection>(null);
 
@@ -62,24 +78,46 @@ export function Host({ authError }: { authError?: string }) {
   // --- sala ---
   const conn = useMemo(() => {
     const c = new HostConnection({
-      onRoom: setRoom,
+      onRoom: (r, previous) => {
+        setRoom(r);
+        if (previous) setRoomChangedFrom(previous);
+      },
       onOnline: setOnline,
       onReplaced: () => setReplaced(true),
+      onRoster: (list) => {
+        // La lista del servidor es la verdad: un celular que no está en ella
+        // no está conectado (p. ej. el servidor se reinició y todavía no volvió).
+        setPeers(new Map(list.map((p) => [p.pid, p])));
+        const online = new Set(list.filter((p) => p.connected).map((p) => p.pid));
+        setGame((g) => ({ ...g, players: g.players.map((p) => (E.isRemotePlayer(p) ? { ...p, connected: online.has(p.id) } : p)) }));
+        setJoinRequests((rs) => rs.filter((r) => online.has(r.pid)));
+      },
       onPeer: (p) => {
         setPeers((m) => new Map(m).set(p.pid, p));
         setGame((g) => (g.players.some((x) => x.id === p.pid) ? E.setConnected(g, p.pid, p.connected) : g));
+        if (!p.connected) setJoinRequests((rs) => rs.filter((r) => r.pid !== p.pid));
       },
       onHello: (pid, role, name) => {
         setPeers((m) => new Map(m).set(pid, { pid, role, name, connected: true }));
         if (role !== 'player') return;
-        setGame((g) => {
-          const existing = g.players.find((x) => x.id === pid);
-          let next = existing ? E.setConnected(g, pid, true) : g.phase === 'lobby' && g.players.length < 8 ? E.addPlayer(g, name, pid) : g;
-          const pl = next.players.find((x) => x.id === pid);
-          if (pl) c.sendTo(pid, { k: 'welcome', playerId: pid, name: pl.name, color: pl.color });
-          else c.sendTo(pid, { k: 'rejected', reason: g.phase === 'lobby' ? 'La sala está llena' : 'La partida ya empezó' });
-          return next;
-        });
+        const g = gameRef.current;
+        const existing = g.players.find((x) => x.id === pid);
+        if (existing) {
+          setGame((cur) => E.setConnected(cur, pid, true));
+          c.sendTo(pid, { k: 'welcome', playerId: pid, name: existing.name, color: existing.color });
+        } else if (g.phase === 'lobby' && g.players.length < 8) {
+          const next = E.addPlayer(g, name, pid, true);
+          const pl = next.players[next.players.length - 1];
+          setGame((cur) => (cur.players.some((x) => x.id === pid) ? cur : E.addPlayer(cur, name, pid, true)));
+          c.sendTo(pid, { k: 'welcome', playerId: pid, name: pl.name, color: pl.color });
+        } else if (g.phase === 'lobby') {
+          c.sendTo(pid, { k: 'rejected', reason: 'La sala está llena' });
+        } else {
+          // Partida empezada: el juez decide si es alguien que ya jugaba
+          // (conserva su puntaje), un jugador nuevo, o lo rechaza.
+          setJoinRequests((rs) => [...rs.filter((r) => r.pid !== pid), { pid, name }]);
+          c.sendTo(pid, { k: 'waiting', reason: 'La partida ya empezó: el juez tiene que confirmar quién sos.' });
+        }
       },
       onRename: (pid, name) => setGame((g) => E.renamePlayer(g, pid, name)),
       onBuzz: (pid, at) => onBuzz(pid, at)
@@ -174,15 +212,40 @@ export function Host({ authError }: { authError?: string }) {
     const phones = [...peersRef.current.values()].filter((p) => p.role === 'player' && p.connected);
     let next = E.newGame({ settings: prev.settings });
     for (const p of phones.slice(0, 8)) {
-      next = E.addPlayer(next, prev.players.find((x) => x.id === p.pid)?.name ?? p.name, p.pid);
+      next = E.addPlayer(next, prev.players.find((x) => x.id === p.pid)?.name ?? p.name, p.pid, true);
     }
     setGame(next);
     for (const p of next.players) conn.sendTo(p.id, { k: 'welcome', playerId: p.id, name: p.name, color: p.color });
   };
 
+  const resolveJoin = (pid: string, target: string) => {
+    const req = joinRequests.find((r) => r.pid === pid);
+    setJoinRequests((rs) => rs.filter((r) => r.pid !== pid));
+    if (!req) return;
+    const g = gameRef.current;
+    if (target === 'reject') {
+      conn.sendTo(pid, { k: 'rejected', reason: 'El juez no te sumó a esta partida.' });
+      return;
+    }
+    let next: GameState;
+    if (target === 'new') {
+      if (g.players.length >= 8) { conn.sendTo(pid, { k: 'rejected', reason: 'La sala está llena' }); return; }
+      next = E.addPlayer(g, req.name, pid, true);
+    } else {
+      next = E.reassignPlayer(g, target, pid);
+      if (next === g) return;
+      // Si la conexión vieja de ese jugador sigue en la sala, ya no le corresponde.
+      if (peersRef.current.get(target)?.connected) conn.kick(target);
+    }
+    setGame(next);
+    const pl = next.players.find((p) => p.id === pid)!;
+    conn.sendTo(pid, { k: 'welcome', playerId: pid, name: pl.name, color: pl.color });
+  };
+
   const ctx: HostCtx = {
     game, update, room, online, peers, conn, player, playerStatus, setPlayer, setPlayerStatus,
-    localSfx, setLocalSfx, sfx: emitSfx, buzz: onBuzz, kick, loggedIn, setLoggedIn
+    localSfx, setLocalSfx, sfx: emitSfx, buzz: onBuzz, kick, loggedIn, setLoggedIn,
+    joinRequests, resolveJoin, roomChangedFrom, dismissRoomChanged: () => setRoomChangedFrom(undefined)
   };
 
   const setTracks = (tracks: Track[]) => update((g) => ({ ...g, tracks }));

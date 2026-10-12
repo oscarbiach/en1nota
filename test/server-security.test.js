@@ -218,3 +218,15 @@ test('A05: una conexión no puede cambiar de rol ni de sala', async () => {
   assert.equal(r?.t, 'error');
   host.ws.close(); p.ws.close();
 });
+
+test('A05/B09: un jugador expulsado que vuelve con su secreto entra como alguien nuevo', async () => {
+  const { host, hosted } = await hostRoom();
+  const { p, joined } = await joinPlayer(hosted.room);
+  await host.next();
+  host.send({ t: 'kick', pid: joined.pid });
+  assert.equal((await p.next()).t, 'kicked');
+  const { p: again, joined: j2 } = await joinPlayer(hosted.room, { pid: joined.pid, secret: joined.secret });
+  assert.equal(j2.t, 'joined');
+  assert.notEqual(j2.pid, joined.pid);
+  host.ws.close(); again.ws.close();
+});

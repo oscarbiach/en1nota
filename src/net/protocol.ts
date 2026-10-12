@@ -11,6 +11,8 @@ export type HostMsg =
   | { k: 'state'; state: PublicState; serverNow: number }
   | { k: 'welcome'; playerId: string; name: string; color: string }
   | { k: 'rejected'; reason: string }
+  /** La partida ya empezó: el juez tiene que confirmar quién es (B09). */
+  | { k: 'waiting'; reason: string }
   | { k: 'sfx'; name: SfxName; playerId?: string };
 
 export type SfxName = 'buzz' | 'correct' | 'wrong' | 'hum' | 'reveal' | 'start' | 'tick' | 'finish';

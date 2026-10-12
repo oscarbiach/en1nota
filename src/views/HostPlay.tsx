@@ -3,6 +3,7 @@ import type { HostCtx } from './Host';
 import * as E from '../game/engine';
 import { Scoreboard } from '../components/Scoreboard';
 import { usePress } from '../components/press';
+import { JoinRequests, RoomChanged } from '../components/JoinRequests';
 import { ConnectPlayer, ManualPlayer, SdkPlayer, sdkSupported } from '../spotify/player';
 import { loadPlayerMode, savePlayerMode, type PlayerModeSetting } from '../storage/store';
 import { secs, mmss } from '../util/format';
@@ -144,6 +145,8 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
             {mesa && game.phase !== 'revealed' && <div className="muted small mt">Mantené apretado para ver el título (modo mesa lo oculta).</div>}
           </div>
 
+          <RoomChanged ctx={ctx} />
+          <JoinRequests ctx={ctx} />
           {game.notice && <div className="notice fade">{game.notice}</div>}
           {err && <div className="error small">{err}</div>}
 
