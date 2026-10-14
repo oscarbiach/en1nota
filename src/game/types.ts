@@ -65,6 +65,12 @@ export interface Round {
   buzzedPlayerId?: string;
   /** Pulsaciones en espera dentro de la ventana de empate. */
   pending: Buzz[];
+  /** Pulsaciones ya ordenadas que esperan su turno. Ausente en partidas antiguas. */
+  queue?: Buzz[];
+  /** En autoevaluación ya se consultó la respuesta: nadie más puede sumarse. */
+  answerShown?: boolean;
+  /** Límite en el reloj sincronizado del servidor; no se reinicia al repetir. */
+  answerDeadline?: number;
   events: RoundEvent[];
   solvedBy?: string;
   /** Instante (reloj del host) en que arrancó a sonar la última pasada. */
@@ -80,6 +86,8 @@ export interface Buzz {
 }
 
 export interface GameState {
+  mode?: 'party' | 'solo' | 'duel';
+  soloAnswer?: 'write' | 'self';
   id: string;
   createdAt: number;
   finishedAt?: number;
@@ -105,6 +113,8 @@ export interface PublicState {
   stepCount: number;
   lockedPlayerIds: string[];
   buzzedPlayerId?: string;
+  queuedPlayerIds?: string[];
+  answersClosed?: boolean;
   solvedBy?: string;
   revealed?: Pick<Track, 'name' | 'artists' | 'album' | 'image'>;
   notice?: string;

@@ -5,6 +5,8 @@ import type { PublicState } from '../game/types';
 import { FinalStandings, publicStandings } from '../components/FinalStandings';
 import { playSfx, unlockAudio } from '../audio/sfx';
 import { Scoreboard } from '../components/Scoreboard';
+import { TurnQueue } from '../components/TurnQueue';
+import { SoundWave } from '../components/SoundWave';
 import { RevealCard } from '../components/RevealCard';
 import { RoomQr } from '../components/RoomQr';
 import { joinUrl } from '../net/protocol';
@@ -89,9 +91,10 @@ export function ScreenView({ room }: { room: string }) {
             <div className="muted big">tiene la palabra</div>
             <div className="huge" style={{ color: floor.color, fontSize: 'clamp(3rem, 12vw, 9rem)' }}>{floor.name}</div>
             {state.lastEvent?.reactionMs !== undefined && <div className="muted">{secs(state.lastEvent.reactionMs)} después de la primera nota</div>}
+            <TurnQueue state={state} />
           </div>
         ) : state.phase === 'playing' ? (
-          <div className="listen"><div className="cover">🎧</div><div className="huge">Escuchá…</div></div>
+          <div><SoundWave active /><div className="huge">Escuchá…</div></div>
         ) : state.phase === 'open' ? (
           <div><div className="cover">❓</div><div className="huge">¿Quién la sabe?</div><div className="muted big">{state.notice ?? ''}</div></div>
         ) : (

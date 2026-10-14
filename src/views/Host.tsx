@@ -59,8 +59,9 @@ export interface HostCtx {
 export function Host({ authError }: { authError?: string }) {
   const [game, setGame] = useState<GameState>(() => {
     const saved = loadGame();
-    if (saved) return E.restoreGame(saved);
-    return E.newGame({ settings: { ...E.newGame().settings, ...loadSettings() } });
+    const mode = new URLSearchParams(location.hash.split('?')[1]).get('modo');
+    const g = saved ? E.restoreGame(saved) : E.newGame({ settings: { ...E.newGame().settings, ...loadSettings() } });
+    return g.phase === 'lobby' && (mode === 'solo' || mode === 'duel' || mode === 'party') ? { ...g, mode } : g;
   });
   const gameRef = useRef(game);
   gameRef.current = game;
@@ -119,7 +120,7 @@ export function Host({ authError }: { authError?: string }) {
         if (existing) {
           setGame((cur) => E.setConnected(cur, pid, true));
           c.sendTo(pid, { k: 'welcome', playerId: pid, name: existing.name, color: existing.color });
-        } else if (g.phase === 'lobby' && g.players.length < 8) {
+        } else if (g.phase === 'lobby' && g.players.length < E.playerLimit(g)) {
           const next = E.addPlayer(g, name, pid, true);
           const pl = next.players[next.players.length - 1];
           setGame((cur) => (cur.players.some((x) => x.id === pid) ? cur : E.addPlayer(cur, name, pid, true)));
@@ -179,6 +180,15 @@ export function Host({ authError }: { authError?: string }) {
   const localSfxRef = useRef(localSfx);
   localSfxRef.current = localSfx;
 
+  // Una promoción de la cola también debe avisar al celular y a la TV.
+  const previousFloor = useRef(game.round.buzzedPlayerId);
+  useEffect(() => {
+    if (previousFloor.current && game.round.buzzedPlayerId && previousFloor.current !== game.round.buzzedPlayerId) {
+      emitSfx('buzz', game.round.buzzedPlayerId);
+    }
+    previousFloor.current = game.round.buzzedPlayerId;
+  }, [game.round.buzzedPlayerId, emitSfx]);
+
   // --- persistencia y difusión ---
   useEffect(() => {
     saveGame(game);
@@ -224,8 +234,8 @@ export function Host({ authError }: { authError?: string }) {
   const startFromScratch = () => {
     const prev = gameRef.current;
     const phones = [...peersRef.current.values()].filter((p) => p.role === 'player' && p.connected);
-    let next = E.newGame({ settings: prev.settings });
-    for (const p of phones.slice(0, 8)) {
+    let next = E.newGame({ settings: prev.settings, mode: prev.mode, soloAnswer: prev.soloAnswer });
+    for (const p of phones.slice(0, E.playerLimit(next))) {
       next = E.addPlayer(next, prev.players.find((x) => x.id === p.pid)?.name ?? p.name, p.pid, true);
     }
     setGame(next);
@@ -243,7 +253,7 @@ export function Host({ authError }: { authError?: string }) {
     }
     let next: GameState;
     if (target === 'new') {
-      if (g.players.length >= 8) { conn.sendTo(pid, { k: 'rejected', reason: 'La sala está llena' }); return; }
+      if (g.players.length >= E.playerLimit(g)) { conn.sendTo(pid, { k: 'rejected', reason: 'La sala está llena' }); return; }
       next = E.addPlayer(g, req.name, pid, true);
     } else {
       next = E.reassignPlayer(g, target, pid);
@@ -287,7 +297,7 @@ export function Host({ authError }: { authError?: string }) {
         </div>
         <Podium game={game} />
         <div className="row mt">
-          <button className="btn primary xl" onClick={() => update((g) => ({ ...E.newGame({ settings: g.settings, tracks: g.tracks, players: g.players.map((p) => ({ ...p, score: 0 })) }) }))}>
+          <button className="btn primary xl" onClick={() => update((g) => ({ ...E.newGame({ mode: g.mode, soloAnswer: g.soloAnswer, settings: g.settings, tracks: g.tracks, players: g.players.map((p) => ({ ...p, score: 0 })) }) }))}>
             Nueva partida con los mismos
           </button>
           <button className="btn" onClick={() => { saveGame(null); navigate('/historial'); }}>Ver historial</button>

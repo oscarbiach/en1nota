@@ -126,6 +126,7 @@ test('A11: tras recargar en música manual, selector, etiqueta y botones coincid
   await page.locator('.stage').waitFor();
   await page.getByText('Música manual', { exact: true }).first().waitFor();
   // Primero el síntoma de la auditoría: selector y error de sesión.
+  await page.getByText('Reproductor y conexión', { exact: true }).click();
   const select = page.locator('.card.soft select');
   await until(async () => (await select.inputValue()) === 'manual', 'el selector muestra música manual');
   assert.equal(await page.getByText('Sin sesión de Spotify').count(), 0, 'sin error de sesión');
@@ -146,6 +147,7 @@ test('A06: terminar tras acertar el tema 1 de 2 conserva acierto, tema e histori
   await page.locator('.floorname', { hasText: 'Ana' }).waitFor();
   await page.getByRole('button', { name: /Correcto/ }).click();
   await page.getByText('¡Ana acertó! +1').waitFor();
+  await page.getByText('Ajustes rápidos', { exact: true }).click();
   await page.getByRole('button', { name: 'Terminar partida' }).click();
   await page.getByText('Fin de la partida').waitFor();
   // Primero el síntoma de la auditoría: la ronda actual entra al historial.
@@ -211,6 +213,7 @@ test('A07: en modo mesa no se leen los próximos temas hasta que el juez los pid
   const page = await j.page.locator('#root').innerHTML();
   for (const t of ['Tema Dos', 'Tema Tres']) assert.ok(!page.includes(t), `"${t}" no debe estar en la página`);
   const upcoming = j.page.getByTestId('upcoming');
+  await upcoming.locator('summary').click();
   const hidden = await upcoming.innerHTML();
   for (const t of ['Tema Dos', 'Tema Tres', 'Artista de']) assert.ok(!hidden.includes(t), `"${t}" no debe estar ni en el DOM`);
   assert.equal(await upcoming.getByText('Tema oculto').count(), 2);
@@ -320,9 +323,10 @@ function rawSocket() {
   });
 }
 
-test('A03: un mensaje malformado de un intruso no deja en blanco al juez', async () => {
+test('A03: un mensaje malformado de un intruso no deja en blanco al juez', async (t) => {
   const j = await openJudge(browser);
   const evil = await rawSocket();
+  t.after(() => evil.close());
   evil.send(JSON.stringify({ t: 'join', room: j.room, role: 'player', name: 'X' }));
   await new Promise((r) => setTimeout(r, 300));
   for (const data of [
@@ -334,7 +338,7 @@ test('A03: un mensaje malformado de un intruso no deja en blanco al juez', async
   ]) evil.send(JSON.stringify({ t: 'msg', data }));
   await new Promise((r) => setTimeout(r, 500));
   // El panel sigue dibujado y operable.
-  await j.page.getByRole('heading', { name: 'Panel del juez' }).waitFor();
+  await j.page.getByRole('heading', { name: 'Armá tu partida' }).waitFor();
   assert.ok((await j.page.locator('#root').innerHTML()).length > 1000, 'el juez no quedó en blanco');
   assert.equal(await j.page.getByText('Algo falló').count(), 0);
   await addTracks(j.page, ['Tema Uno']);
@@ -489,12 +493,12 @@ test('B06: una partida guardada con esquema inválido no bloquea al juez y no to
     localStorage.setItem('en1nota.playlists', JSON.stringify([{ id: 'p1', name: 'Mi lista', tracks: [{ id: 'm', uri: 'manual:m', name: 'Tema', artists: '', album: '', durationMs: 1, startMs: 0 }], updatedAt: 1 }]));
   });
   await page.goto(`${BASE}/#/juez`);
-  await page.getByRole('heading', { name: 'Panel del juez' }).waitFor();
+  await page.getByRole('heading', { name: 'Armá tu partida' }).waitFor();
   assert.equal(await page.getByText('Algo falló').count(), 0);
   await page.getByTestId('storage-banner').getByText('Se recuperaron datos guardados.').waitFor();
   // Recargar ya no encuentra nada roto.
   await page.reload();
-  await page.getByRole('heading', { name: 'Panel del juez' }).waitFor();
+  await page.getByRole('heading', { name: 'Armá tu partida' }).waitFor();
   assert.equal(await page.getByText('Algo falló').count(), 0);
   await page.getByText(/3 · Canciones/).click();
   await page.getByText('Mi lista').waitFor();
@@ -568,6 +572,7 @@ test('el juez puede escuchar la canción para verificar mientras alguien tiene l
   await page.keyboard.press('1');
   await page.locator('.floorname', { hasText: 'Ana' }).waitFor();
   const verify = page.getByTestId('verify');
+  await page.getByText('Escuchar para comprobar', { exact: true }).click();
   await verify.getByRole('button', { name: '+10 s' }).click();
   await verify.getByRole('button', { name: '+10 s' }).click();
   await verify.getByRole('button', { name: /Escuchar desde acá/ }).click();

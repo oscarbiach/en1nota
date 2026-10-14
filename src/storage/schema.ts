@@ -81,6 +81,9 @@ function parseRound(v: unknown): Round | null {
     buzzedPlayerId: optStr(v.buzzedPlayerId),
     // Las pulsaciones en espera nunca sobreviven a una recarga.
     pending: [],
+    queue: Array.isArray(v.queue) ? v.queue.filter((b): b is { playerId: string; at: number } => isObj(b) && isStr(b.playerId) && isNum(b.at)) : [],
+    ...(v.answerShown === true ? { answerShown: true } : {}),
+    ...(isNum(v.answerDeadline) ? { answerDeadline: v.answerDeadline } : {}),
     events: Array.isArray(v.events) ? v.events.map(parseEvent).filter((e): e is RoundEvent => !!e) : [],
     solvedBy: optStr(v.solvedBy),
     playStartedAt: optNum(v.playStartedAt),
@@ -112,6 +115,8 @@ export function parseGame(v: unknown): GameState | null {
     createdAt: isNum(v.createdAt) ? v.createdAt : Date.now(),
     ...(isNum(v.finishedAt) ? { finishedAt: v.finishedAt } : {}),
     players: players as Player[],
+    mode: v.mode === 'solo' || v.mode === 'duel' ? v.mode : 'party',
+    ...(v.soloAnswer === 'self' || v.soloAnswer === 'write' ? { soloAnswer: v.soloAnswer } : {}),
     tracks: tracks as Track[],
     settings: parseSettings(v.settings),
     phase,

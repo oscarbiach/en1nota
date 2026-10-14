@@ -37,11 +37,28 @@ test('B07: el viewport no bloquea el zoom', async () => {
   await ctx.close();
 });
 
+test('B07: nuevos modos solitario y duelo sin violaciones WCAG automáticas', async () => {
+  for (const mode of ['solo', 'duel']) {
+    const j = await openJudge(browser);
+    try {
+      await j.page.getByRole('button', { name: mode === 'solo' ? /Solitario Tu oído/ : /1 contra 1 Dos jugadores/ }).click();
+      await scan(j.page, `${mode}: preparación`);
+      await addTablePlayers(j.page, mode === 'solo' ? ['Ana'] : ['Ana', 'Beto']);
+      await addTracks(j.page, ['Tema Secreto']); await start(j.page);
+      await j.page.getByRole('button', { name: /^▶ Sonar/ }).click();
+      if (mode === 'duel') {
+        await j.page.keyboard.press('1'); await j.page.locator('.floorname').waitFor(); await j.page.keyboard.press('2');
+      }
+      await scan(j.page, `${mode}: jugando`);
+    } finally { await j.ctx.close(); }
+  }
+});
+
 test('B07: inicio e historial sin violaciones WCAG automáticas', async () => {
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
   await page.goto(BASE);
-  await page.getByRole('heading', { name: 'Quiero jugar' }).waitFor();
+  await page.getByRole('heading', { name: 'Entrá a la ronda.' }).waitFor();
   await scan(page, 'Inicio');
   await page.goto(`${BASE}/#/historial`);
   await page.getByRole('heading', { name: 'Historial' }).waitFor();
@@ -66,6 +83,7 @@ test('B07: panel del juez (lobby y juego) sin violaciones WCAG automáticas', as
   await j.page.locator('.floorname').waitFor();
   await scan(j.page, 'Juez: alguien tiene la palabra');
   await j.page.getByRole('button', { name: /Correcto/ }).click();
+  await j.page.getByText('Ajustes rápidos', { exact: true }).click();
   await j.page.getByRole('button', { name: 'Terminar partida' }).first().click();
   await j.page.getByText('Fin de la partida').waitFor();
   await scan(j.page, 'Juez: fin');
@@ -101,7 +119,7 @@ test('B07: a 320 px de ancho (≈ 400 % de zoom) no hay desplazamiento horizonta
   const page = await ctx.newPage();
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   await page.goto(BASE);
-  await page.getByRole('heading', { name: 'Quiero jugar' }).waitFor();
+  await page.getByRole('heading', { name: 'Entrá a la ronda.' }).waitFor();
   assert.ok(await overflow() <= 0, 'inicio');
   await page.getByLabel('Tu nombre').fill('Ana');
   await page.getByPlaceholder('ABCD').first().fill(j.room);

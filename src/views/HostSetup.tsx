@@ -16,7 +16,7 @@ export function HostSetup({ ctx, setTracks, authError }: { ctx: HostCtx; setTrac
   const { game, update, room, online } = ctx;
   const [tab, setTab] = useState<'spotify' | 'jugadores' | 'lista' | 'reglas'>(ctx.loggedIn ? 'jugadores' : 'spotify');
   const manual = ctx.player?.mode === 'manual';
-  const ready = (ctx.loggedIn || manual) && game.tracks.length > 0 && game.players.length > 0;
+  const ready = (ctx.loggedIn || manual) && game.tracks.length > 0 && E.validPlayerCount(game);
   const [startErr, setStartErr] = useState<string>();
   const [starting, setStarting] = useState(false);
   const start = async () => {
@@ -37,7 +37,7 @@ export function HostSetup({ ctx, setTracks, authError }: { ctx: HostCtx; setTrac
       <div className="row between mb">
         <div className="row">
           <button className="btn sm ghost" onClick={() => navigate('/')}>← Inicio</button>
-          <h1 style={{ margin: 0 }}>Panel del juez</h1>
+          <h1 style={{ margin: 0 }}>Armá tu partida</h1>
         </div>
         <div className="row">
           <span className={`pill ${online ? 'on' : 'off'}`}>{online ? `Sala ${room ?? '…'}` : 'Sin conexión a la sala'}</span>
@@ -46,6 +46,16 @@ export function HostSetup({ ctx, setTracks, authError }: { ctx: HostCtx; setTrac
       </div>
 
       {authError && <div className="error mb">{authError}</div>}
+      <div className="mode-picker" aria-label="Modo de juego">
+        {([
+          ['party', 'La juntada', 'Hasta 8 · con juez'],
+          ['solo', 'Solitario', 'Tu oído contra la música'],
+          ['duel', '1 contra 1', 'Dos jugadores · sin juez extra']
+        ] as const).map(([mode, title, desc]) => <button key={mode} className={`mode-option ${game.mode === mode || !game.mode && mode === 'party' ? 'selected' : ''}`}
+          aria-pressed={(game.mode ?? 'party') === mode} onClick={() => { update((g) => ({ ...g, mode })); setTab('jugadores'); }}>
+          <b>{title}</b><span>{desc}</span>
+        </button>)}
+      </div>
       {ctx.serverFull && !room && <div className="error mb" role="alert">El servidor está lleno en este momento y no puede abrir más salas. Se vuelve a intentar solo cada 30 segundos.</div>}
 
       <div className="tabs">
@@ -65,6 +75,8 @@ export function HostSetup({ ctx, setTracks, authError }: { ctx: HostCtx; setTrac
         <div className="muted small">
           {!ctx.loggedIn && !manual ? 'Falta conectar Spotify (o elegí "sin reproductor"). ' : ''}
           {game.players.length === 0 ? 'Falta al menos un jugador. ' : ''}
+          {game.players.length > E.playerLimit(game) ? `Este modo admite ${E.playerLimit(game)}: quitá los jugadores que sobran. ` : ''}
+          {game.mode === 'duel' && game.players.length < 2 ? 'El duelo necesita dos jugadores. ' : ''}
           {game.tracks.length === 0 ? 'Falta cargar canciones. ' : ''}
           {ready ? `${game.players.length} jugadores · ${game.tracks.length} temas · fragmentos ${game.settings.steps.map(secs).join(' → ')}` : ''}
         </div>
@@ -188,11 +200,12 @@ function SpotifyTab({ ctx }: { ctx: HostCtx }) {
 function PlayersTab({ ctx }: { ctx: HostCtx }) {
   const { game, update, room } = ctx;
   const [name, setName] = useState('');
-  const add = () => { if (!name.trim() || game.players.length >= 8) return; update((g) => E.addPlayer(g, name)); setName(''); };
+  const limit = E.playerLimit(game);
+  const add = () => { if (!name.trim() || game.players.length >= limit) return; update((g) => E.addPlayer(g, name)); setName(''); };
 
   return (
-    <div className="grid2">
-      <div className="card">
+    <div className={game.mode === 'solo' ? 'solo-setup' : 'grid2'}>
+      {game.mode !== 'solo' && <div className="card">
         <h2>Con celulares</h2>
         {room ? (
           <div className="col" style={{ alignItems: 'center' }}>
@@ -206,14 +219,23 @@ function PlayersTab({ ctx }: { ctx: HostCtx }) {
         <h2>Pantalla de TV</h2>
         <p className="muted small">Abrí esto en la tele o notebook conectada:</p>
         {room && <div className="row"><input readOnly aria-label="Link de la pantalla de TV" value={screenUrl(room)} onFocus={(e) => e.target.select()} /><button className="btn sm" onClick={() => window.open(screenUrl(room), '_blank')}>Abrir</button></div>}
-      </div>
+      </div>}
 
       <div className="card">
-        <h2>Jugadores ({game.players.length}/8)</h2>
-        <p className="muted small">Los que entran por celu aparecen solos. También podés agregar a mano para el <b>modo mesa</b>: pulsadores en esta pantalla con teclas 1-8.</p>
+        <h2>Jugadores ({game.players.length}/{limit})</h2>
+        {game.mode === 'solo' && <div className="mode-help">
+          <p>Agregate abajo y jugá desde esta pantalla.</p>
+          <label htmlFor="solo-answer">Cómo querés responder</label>
+          <select id="solo-answer" value={game.soloAnswer ?? 'write'} onChange={(e) => update((g) => ({ ...g, soloAnswer: e.target.value as 'write' | 'self' }))}>
+            <option value="write">Escribir la canción · 30 segundos</option><option value="self">Autoevaluación · sin reloj</option>
+          </select>
+          <p className="small muted mt">{game.soloAnswer === 'self' ? 'Decís o cantás tu respuesta, la comprobás y marcás si acertaste.' : 'Un intento por tema. El reloj arranca al escuchar y no se reinicia al repetir. No importan tildes, signos ni mayúsculas.'}</p>
+        </div>}
+        {game.mode === 'duel' && <p className="mode-help">Usen dos celulares o las teclas 1 y 2. Antes de comprobar el título, ambos deben tocar y decir su respuesta si quieren participar. El primero que acierta se lleva el punto.</p>}
+        {game.mode !== 'solo' && <p className="muted small">Los que entran por celu aparecen solos. También podés agregar a mano para el <b>modo mesa</b>: pulsadores en esta pantalla con teclas 1-8.</p>}
         <div className="row mb">
           <input aria-label="Nombre del jugador nuevo" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre" maxLength={24} onKeyDown={(e) => e.key === 'Enter' && add()} className="grow" />
-          <button className="btn" disabled={!name.trim() || game.players.length >= 8} onClick={add}>Agregar</button>
+          <button className="btn" disabled={!name.trim() || game.players.length >= limit} onClick={add}>Agregar</button>
         </div>
         <ul className="list">
           {game.players.map((p) => (

@@ -4,6 +4,11 @@ Juego presencial para juntadas: el juez hace sonar un pedacito de una canción
 (a veces una sola nota), el que toca primero tiene que decir el nombre exacto o
 cantar la canción (tarareando también vale). Acertar suma, fallar resta.
 
+Ahora también incluye **Solitario** (respuesta escrita con 30 segundos o
+autoevaluación) y **1 contra 1** sin juez adicional. En las juntadas, los toques
+forman una cola: si alguien falla, la palabra pasa automáticamente al siguiente.
+Ver [guía de los nuevos modos, cambios y rollback](docs/CAMBIOS-2026-10-13.md).
+
 Es una PWA en español que corre en cualquier navegador:
 
 - **Juez**: maneja la música desde su Spotify Premium, ve quién tocó primero,
@@ -22,7 +27,7 @@ Es una PWA en español que corre en cualquier navegador:
 | Toca primero y acierta | suma los puntos de esa pasada (por defecto +1) |
 | Toca y falla / se queda en blanco | resta (por defecto −1) y queda bloqueado en ese tema |
 | Nadie acierta | el juez repite un fragmento más largo (0,4 s → 1,2 s → 3 s → 8 s) o revela |
-| Dos tocan casi juntos | se ordenan por reloj sincronizado con el servidor, ventana de 150 ms |
+| Varios tocan | se ordenan por llegada al servidor; el primero habla y el resto espera en cola. Si falla, sigue el próximo |
 
 Todo es configurable en la pestaña **Reglas**: duraciones, puntos por pasada
 (por ejemplo 3 / 2 / 1), penalizaciones y bloqueo.

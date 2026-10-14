@@ -42,6 +42,8 @@ function isPublicState(s: unknown): s is PublicState {
   }
   for (const k of ['trackIndex', 'trackCount', 'step', 'stepMs', 'stepCount'] as const) if (!isNum(s[k])) return false;
   if (!strArr(s.lockedPlayerIds)) return false;
+  if (s.queuedPlayerIds !== undefined && !strArr(s.queuedPlayerIds, 16)) return false;
+  if (s.answersClosed !== undefined && typeof s.answersClosed !== 'boolean') return false;
   if (!optStr(s.buzzedPlayerId, 64) || !optStr(s.solvedBy, 64) || !optStr(s.notice, TEXT_MAX)) return false;
   if (typeof s.finished !== 'boolean') return false;
   if (s.revealed !== undefined) {

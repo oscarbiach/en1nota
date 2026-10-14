@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { HostCtx } from './Host';
 import * as E from '../game/engine';
 import { Scoreboard } from '../components/Scoreboard';
+import { TurnQueue } from '../components/TurnQueue';
+import { SoundWave } from '../components/SoundWave';
 import { usePress } from '../components/press';
 import { JoinRequests, RoomChanged } from '../components/JoinRequests';
 import { ConnectPlayer, ManualPlayer, SdkPlayer, sdkSupported } from '../spotify/player';
@@ -19,6 +21,8 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
   const [peek, setPeek] = useState(false);
   const [peekNext, setPeekNext] = useState(false);
   const [mesa, setMesa] = useState(() => game.players.some((p) => !ctx.peers.has(p.id)));
+  const selfJudge = game.mode === 'solo' || game.mode === 'duel';
+  const showAnswer = game.phase === 'revealed' || (selfJudge ? game.round.answerShown : !mesa || peek);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const gameRef = useRef(game);
@@ -30,7 +34,7 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
   };
 
   const play = () => {
-    if (busyRef.current) return; // la tecla espacio no pasa por el botón deshabilitado
+    if (busyRef.current || gameRef.current.round.pending.length) return; // la tecla espacio no pasa por el botón deshabilitado
     return guard(async () => {
       if (!player) throw new Error('No hay reproductor configurado. Elegí uno en el panel "Reproductor" de la derecha.');
       if (!player.ready) await player.init();
@@ -49,6 +53,7 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
   };
 
   const correct = () => {
+    if (selfJudge && !gameRef.current.round.answerShown) return;
     ctx.sfx('correct', floor?.id);
     update((g) => E.judgeCorrect(g));
     void guard(async () => { setTimeout(() => { ctx.sfx('reveal'); }, 0); await player?.play(track.uri, track.startMs, game.settings.revealMs); });
@@ -76,10 +81,11 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
   // Teclas: 1-8 pulsadores (modo mesa), espacio = sonar, C/X = correcto/incorrecto, N = siguiente.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.repeat) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       // Enter / Espacio sobre un botón enfocado activan ese botón, no un atajo.
-      if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+      if ((tag === 'BUTTON' || tag === 'SUMMARY') && (e.key === ' ' || e.key === 'Enter')) return;
       const g = gameRef.current;
       if (/^[1-8]$/.test(e.key)) {
         const p = g.players.find((x) => x.key === e.key && !ctx.peers.has(x.id));
@@ -89,14 +95,14 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
       if (e.key === ' ' && ['ready', 'open'].includes(g.phase)) { e.preventDefault(); void play(); }
       if (g.phase === 'buzzed') {
         if (e.key === 'c' || e.key === 'C') correct();
-        if (e.key === 'x' || e.key === 'X') wrong();
+        if ((e.key === 'x' || e.key === 'X') && (!selfJudge || g.round.answerShown)) wrong();
       }
       if ((e.key === 'n' || e.key === 'N') && g.phase === 'revealed') next();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track.uri, len, player, floor?.id]);
+  }, [track.uri, len, player, floor?.id, selfJudge]);
 
   const localBuzz = (pid: string) => {
     // Los pulsadores en pantalla van por el mismo camino que los del celu, en hora del servidor.
@@ -108,21 +114,22 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
   };
 
   return (
-    <div className="page wide">
+    <div className="page wide play-page">
       <div className="row between mb">
         <div className="row">
           <button className="btn sm ghost" onClick={() => navigate('/')}>← Inicio</button>
           <b>Tema {game.round.trackIndex + 1} / {game.tracks.length}</b>
+          <span className="eyebrow">{game.mode === 'solo' ? 'Solitario' : game.mode === 'duel' ? '1 contra 1' : 'La juntada'}</span>
         </div>
         <div className="row">
           <span className={`pill ${online ? 'on' : 'off'}`}>{room ? `Sala ${room}` : 'sin sala'}</span>
           <span className={`pill ${player?.ready ? 'on' : 'off'}`}>{player?.ready ? MODE_LABEL[player.mode] : 'Sin reproductor'}</span>
-          <label className="row small" style={{ margin: 0 }}><input type="checkbox" checked={mesa} onChange={(e) => setMesa(e.target.checked)} />Modo mesa</label>
+          {!selfJudge && <label className="row small" style={{ margin: 0 }}><input type="checkbox" checked={mesa} onChange={(e) => setMesa(e.target.checked)} />Modo mesa</label>}
         </div>
       </div>
 
       <div className="judge">
-        <div className="stage">
+        <div className={`stage phase-${game.phase}`}>
           <div className="row between">
             <span className="phase">{phaseLabel[game.phase] ?? game.phase}</span>
             <div className="steps">
@@ -130,19 +137,19 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
             </div>
           </div>
 
-          <div
-            className={`secret ${mesa && !peek && game.phase !== 'revealed' ? 'hidden' : ''}`}
-            onPointerDown={() => setPeek(true)} onPointerUp={() => setPeek(false)} onPointerLeave={() => setPeek(false)}
-            title={mesa ? 'Mantené apretado para espiar' : ''}
-          >
-            <div className="row">
-              {track.image && <img src={track.image} alt="" style={{ width: 56, height: 56, borderRadius: 8, filter: mesa && !peek && game.phase !== 'revealed' ? 'blur(8px)' : 'none' }} />}
+          <div className={`secret ${showAnswer ? 'answer-visible' : 'mystery'}`}>
+            {showAnswer ? <div className="row">
+              {track.image && <img src={track.image} alt="" style={{ width: 72, height: 72, borderRadius: 16 }} />}
               <div className="grow" style={{ minWidth: 0 }}>
                 <b style={{ display: 'block' }}>{track.name}</b>
                 <span className="muted small">{track.artists} · desde {mmss(track.startMs)}</span>
               </div>
-            </div>
-            {mesa && game.phase !== 'revealed' && <div className="muted small mt">Mantené apretado para ver el título (modo mesa lo oculta).</div>}
+            </div> : <><SoundWave active={game.phase === 'playing'} /><span className="eyebrow">Tema {game.round.trackIndex + 1}</span><h2>{game.phase === 'playing' ? 'Dejá que tu oído haga lo suyo.' : 'Una nota. ¿Ya la tenés?'}</h2><p className="muted small">Escuchá el fragmento y respondé.</p></>}
+            {!selfJudge && mesa && game.phase !== 'revealed' && <button className="btn sm ghost mt"
+              onPointerDown={() => setPeek(true)} onPointerUp={() => setPeek(false)} onPointerLeave={() => setPeek(false)} onPointerCancel={() => setPeek(false)}
+              onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); setPeek(true); } }} onKeyUp={() => setPeek(false)} onBlur={() => setPeek(false)}>
+              Mantener para ver el título
+            </button>}
           </div>
 
           <RoomChanged ctx={ctx} />
@@ -151,16 +158,19 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
           {err && <div className="error small">{err}</div>}
 
           {floor ? (
-            <div className="fade" style={{ ['--c' as string]: floor.color }}>
+            <div key={floor.id} className="floor-card fade" style={{ ['--c' as string]: floor.color }}>
               <div className="muted">Tiene la palabra</div>
               <div className="floorname">{floor.name}</div>
               {game.round.events.at(-1)?.reactionMs !== undefined && <div className="muted small">reaccionó a los {secs(game.round.events.at(-1)!.reactionMs!)}</div>}
-              <div className="actions mt">
+              {selfJudge && !game.round.answerShown ? <div className="mt">
+                <p className="muted small">{game.mode === 'duel' ? 'Digan sus respuestas en voz alta. Quien quiera otro turno debe tocar antes de comprobar: después se cierra la cola.' : 'Decí o cantá tu respuesta antes de mirar. Después marcás cómo te fue.'}</p>
+                <button className="btn primary xl" onClick={() => { void player?.stop(); update(E.checkAnswer); }}>Comprobar respuesta</button>
+              </div> : <div className="actions mt">
                 <button className="btn ok xl" onClick={correct}>✔ Correcto <small>(C)</small></button>
                 <button className="btn bad xl" onClick={wrong}>✘ Incorrecto <small>(X)</small></button>
                 <button className="btn xl" onClick={blank}>😶 En blanco</button>
-              </div>
-              <VerifyPlayer key={`${track.uri}-${game.round.step}`} ctx={ctx} uri={track.uri} startMs={track.startMs} durationMs={track.durationMs} />
+              </div>}
+              {!selfJudge && <details className="utility mt"><summary>Escuchar para comprobar</summary><VerifyPlayer key={`${track.uri}-${game.round.step}-${floor.id}`} ctx={ctx} uri={track.uri} startMs={track.startMs} durationMs={track.durationMs} /></details>}
             </div>
           ) : game.phase === 'revealed' ? (
             <div className="actions">
@@ -170,16 +180,18 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
             </div>
           ) : (
             <div className="actions">
-              <button className="btn primary xl" disabled={busy || game.phase === 'playing'} onClick={play}>
+              <button className="btn primary xl" disabled={busy || game.phase === 'playing' || game.round.pending.length > 0} onClick={play}>
                 ▶ Sonar {secs(len)} <small>(espacio)</small>
               </button>
-              {E.hasMoreSteps(game) && game.phase === 'open' && <button className="btn info xl" onClick={longer}>Más largo → {secs(E.stepMs(game.settings, step + 1))}</button>}
+              {E.hasMoreSteps(game) && game.phase === 'open' && <button className="btn info xl" disabled={game.round.pending.length > 0} onClick={longer}>Más largo → {secs(E.stepMs(game.settings, step + 1))}</button>}
               <button className="btn xl" onClick={revealNow}>Revelar (nadie)</button>
               <button className="btn ghost" onClick={stopMusic}>■ Parar</button>
             </div>
           )}
 
-          {mesa && (
+          <TurnQueue state={E.toPublic(game)} />
+          {E.isSoloWritten(game) && game.phase !== 'revealed' && <SoloAnswer key={game.round.trackIndex} ctx={ctx} />}
+          {!E.isSoloWritten(game) && (mesa || selfJudge) && (
             <div className="pads mt">
               {game.players.filter((p) => !ctx.peers.has(p.id)).map((p) => (
                 <Pad key={p.id} name={p.name} color={p.color} hotkey={p.key} disabled={!E.canBuzz(game, p.id)} onBuzz={() => localBuzz(p.id)} />
@@ -190,8 +202,8 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
 
         <div className="col">
           <Scoreboard state={E.toPublic(game)} />
-          <div className="card soft">
-            <h3>Ajustes rápidos</h3>
+          <details className="card soft utility">
+            <summary>Ajustes rápidos</summary>
             <ul className="list">
               {game.players.map((p) => (
                 <li key={p.id} className="item">
@@ -207,9 +219,10 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
               <button className="btn sm" onClick={skip}>Saltar tema</button>
               <button className="btn sm ghost" onClick={() => { if (confirm('¿Terminar la partida ahora?')) { void player?.stop(); ctx.sfx('finish'); update(E.finishGame); } }}>Terminar partida</button>
             </div>
-          </div>
-          <PlayerQuick ctx={ctx} />
-          <div className="card soft" data-testid="upcoming">
+          </details>
+          <details className="utility"><summary>Reproductor y conexión</summary><PlayerQuick ctx={ctx} /></details>
+          {!selfJudge && <details className="card soft utility" data-testid="upcoming">
+            <summary>Próximos temas</summary>
             <div className="row between">
               <h3 style={{ margin: 0 }}>Próximos</h3>
               {mesa && game.round.trackIndex + 1 < game.tracks.length && (
@@ -231,11 +244,46 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
               ))}
               {game.round.trackIndex + 1 >= game.tracks.length && <li className="muted small">Este es el último.</li>}
             </ul>
-          </div>
+          </details>}
         </div>
       </div>
     </div>
   );
+}
+
+function SoloAnswer({ ctx }: { ctx: HostCtx }) {
+  const [answer, setAnswer] = useState('');
+  const [remaining, setRemaining] = useState(30);
+  const current = useRef(ctx);
+  current.current = ctx;
+  const deadline = ctx.game.round.answerDeadline;
+  const enabled = deadline !== undefined && ['playing', 'open'].includes(ctx.game.phase);
+  const submit = (text: string) => {
+    const c = current.current;
+    const at = c.now();
+    const next = E.submitSoloAnswer(c.game, text, at);
+    if (next === c.game) return;
+    void c.player?.stop();
+    c.sfx(next.round.solvedBy ? 'correct' : 'wrong', c.game.players[0]?.id);
+    c.update((g) => E.submitSoloAnswer(g, text, at));
+  };
+  useEffect(() => {
+    if (!enabled || deadline === undefined) return;
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((deadline - current.current.now()) / 1000));
+      setRemaining(left);
+      if (!left) submit('');
+    };
+    tick();
+    const timer = window.setInterval(tick, 100);
+    return () => clearInterval(timer);
+  }, [deadline, enabled]);
+  return <form className="solo-answer" onSubmit={(e) => { e.preventDefault(); submit(answer); }}>
+    <div className="row between"><label htmlFor="song-answer">¿Cómo se llama la canción?</label><span className={`countdown ${remaining <= 10 ? 'urgent' : ''}`} role="timer" aria-label={`${remaining} segundos restantes`}>{remaining}<small>s</small></span></div>
+    <div className="time-track" aria-hidden="true"><span style={{ width: `${remaining / 30 * 100}%` }} /></div>
+    <div className="row mt"><input id="song-answer" autoComplete="off" spellCheck={false} maxLength={200} placeholder="Escribí el título…" value={answer} onChange={(e) => setAnswer(e.target.value)} disabled={!enabled} className="grow" /><button className="btn primary" disabled={!enabled || !answer.trim()}>Responder</button></div>
+    <p className="small muted mt">{enabled ? 'Un intento. Tildes, signos y mayúsculas no importan.' : 'Tocá Sonar para empezar. Tenés 30 segundos.'}</p>
+  </form>;
 }
 
 /**

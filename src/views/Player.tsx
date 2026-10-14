@@ -78,8 +78,9 @@ function Buzzer({ room, name }: { room: string; name: string }) {
   const mine = state?.players.find((p) => p.id === myId);
   const color = mine?.color ?? me?.color ?? '#888';
   const locked = !!myId && !!state?.lockedPlayerIds.includes(myId);
-  const open = state?.phase === 'playing' || state?.phase === 'open';
-  const canBuzz = open && !locked && !!mine && status === 'joined';
+  const open = state?.phase === 'playing' || state?.phase === 'open' || state?.phase === 'buzzed';
+  const queuePosition = myId ? (state?.queuedPlayerIds ?? []).indexOf(myId) : -1;
+  const canBuzz = open && !state?.answersClosed && !locked && queuePosition < 0 && state?.buzzedPlayerId !== myId && !!mine && status === 'joined';
   const hasFloor = state?.buzzedPlayerId && state.buzzedPlayerId === myId;
   const other = state?.buzzedPlayerId ? state.players.find((p) => p.id === state.buzzedPlayerId) : undefined;
 
@@ -104,8 +105,10 @@ function Buzzer({ room, name }: { room: string; name: string }) {
   else if (state?.phase === 'finished') { label = 'Fin'; sub = 'Terminó la partida'; }
   else if (state?.phase === 'revealed') { label = '🎵'; sub = state.solvedBy === myId ? '¡La sacaste!' : 'Ahí está la canción'; }
   else if (hasFloor) { label = '¡Tuya!'; sub = 'Decí el nombre exacto o cantá la letra'; cls = 'mine'; }
-  else if (other) { label = other.name; sub = 'tiene la palabra'; }
+  else if (queuePosition >= 0) { label = `En espera · ${queuePosition + 1}`; sub = 'Tu toque ya está guardado. Si falla, sigue tu turno.'; cls = 'waiting'; }
   else if (locked) { label = 'Bloqueado'; sub = 'Ya fallaste en este tema'; }
+  else if (state?.answersClosed) { label = 'A comprobar'; sub = 'Las respuestas están cerradas para este tema.'; }
+  else if (other) { label = '¡ME SUMO!'; sub = `${other.name} tiene la palabra. Tocá para entrar en la cola.`; cls = ''; }
   else if (open) { label = '¡TOCÁ!'; sub = state?.phase === 'playing' ? 'Sonando…' : '¿La sabés?'; cls = ''; }
   else { label = 'Atenti'; sub = 'El juez está por poner el tema'; }
 
@@ -130,7 +133,7 @@ function Buzzer({ room, name }: { room: string; name: string }) {
           </div>
         </div>
       ) : (
-        <button className={`bigbtn ${cls}`} {...press} disabled={!canBuzz && !hasFloor}>
+        <button className={`bigbtn ${cls}`} {...press} disabled={!canBuzz} aria-live="polite">
           <span>{label}</span>
           <small>{sub}</small>
         </button>

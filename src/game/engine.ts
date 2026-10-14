@@ -7,12 +7,13 @@ export function newId(): string {
 }
 
 export function newRound(trackIndex: number): Round {
-  return { trackIndex, step: 0, lockedPlayerIds: [], pending: [], events: [] };
+  return { trackIndex, step: 0, lockedPlayerIds: [], pending: [], queue: [], events: [] };
 }
 
 export function newGame(partial: Partial<GameState> = {}): GameState {
   return {
     id: newId(),
+    mode: 'party',
     createdAt: Date.now(),
     players: [],
     tracks: [],
@@ -39,12 +40,15 @@ export function currentTrack(g: GameState): Track | undefined {
 }
 
 export function buzzersOpen(g: GameState): boolean {
-  return g.phase === 'playing' || g.phase === 'open';
+  return g.phase === 'playing' || g.phase === 'open' || g.phase === 'buzzed';
 }
 
 export function canBuzz(g: GameState, playerId: string): boolean {
+  if (isSoloWritten(g)) return false;
   if (!buzzersOpen(g)) return false;
+  if (g.round.answerShown) return false;
   if (g.round.lockedPlayerIds.includes(playerId)) return false;
+  if (g.round.buzzedPlayerId === playerId || [...g.round.pending, ...(g.round.queue ?? [])].some((b) => b.playerId === playerId)) return false;
   return g.players.some((p) => p.id === playerId);
 }
 
@@ -56,6 +60,7 @@ function cleanName(name: unknown): string {
 }
 
 export function addPlayer(g: GameState, name: string, id = newId(), remote = false): GameState {
+  if (g.players.length >= playerLimit(g) || g.players.some((p) => p.id === id)) return g;
   const clean = cleanName(name) || `Jugador ${g.players.length + 1}`;
   const used = new Set(g.players.map((p) => p.color));
   const color = PLAYER_COLORS.find((c) => !used.has(c)) ?? PLAYER_COLORS[g.players.length % PLAYER_COLORS.length];
@@ -83,6 +88,7 @@ export function reassignPlayer(g: GameState, fromId: string, toId: string): Game
     buzzedPlayerId: id(r.buzzedPlayerId),
     solvedBy: id(r.solvedBy),
     pending: r.pending.map((b) => ({ ...b, playerId: id(b.playerId)! })),
+    queue: r.queue?.map((b) => ({ ...b, playerId: id(b.playerId)! })),
     events: r.events.map((e) => (e.playerId === fromId ? { ...e, playerId: toId } : e))
   });
   return {
@@ -94,8 +100,21 @@ export function reassignPlayer(g: GameState, fromId: string, toId: string): Game
 }
 
 export function removePlayer(g: GameState, id: string): GameState {
-  return { ...g, players: g.players.filter((p) => p.id !== id).map((p, i) => ({ ...p, key: String(i + 1) })) };
+  const next = { ...g, players: g.players.filter((p) => p.id !== id).map((p, i) => ({ ...p, key: String(i + 1) })),
+    round: { ...g.round, pending: g.round.pending.filter((b) => b.playerId !== id), queue: (g.round.queue ?? []).filter((b) => b.playerId !== id) } };
+  return g.round.buzzedPlayerId === id
+    ? resolveBuzzes({ ...next, phase: 'open', round: { ...next.round, buzzedPlayerId: undefined } }) : next;
 }
+
+export function playerLimit(g: Pick<GameState, 'mode'>): number {
+  return g.mode === 'solo' ? 1 : g.mode === 'duel' ? 2 : 8;
+}
+
+export function validPlayerCount(g: GameState): boolean {
+  return g.players.length > 0 && g.players.length <= playerLimit(g) && (g.mode !== 'duel' || g.players.length === 2);
+}
+
+export const isSoloWritten = (g: GameState) => g.mode === 'solo' && g.soloAnswer !== 'self';
 
 export function renamePlayer(g: GameState, id: string, name: string): GameState {
   return { ...g, players: g.players.map((p) => (p.id === id ? { ...p, name: cleanName(name) || p.name } : p)) };
@@ -112,7 +131,7 @@ export function adjustScore(g: GameState, id: string, delta: number): GameState 
 // ---------- flujo de partida ----------
 
 export function startGame(g: GameState): GameState {
-  if (g.tracks.length === 0) return g;
+  if (g.tracks.length === 0 || !validPlayerCount(g)) return g;
   return {
     ...g,
     createdAt: Date.now(),
@@ -126,13 +145,15 @@ export function startGame(g: GameState): GameState {
 
 /** El juez apretó "reproducir": arranca (o repite) la pasada actual. */
 export function markPlaying(g: GameState, at = Date.now()): GameState {
+  if (g.round.pending.length) return g;
   if (!['ready', 'open', 'playing'].includes(g.phase)) return g;
   const ev: RoundEvent = { kind: 'replay', step: g.round.step, at };
   return {
     ...g,
     phase: 'playing',
     notice: undefined,
-    round: { ...g.round, playStartedAt: at, pending: [], events: g.round.step === 0 && g.round.events.length === 0 ? g.round.events : [...g.round.events, ev] }
+    round: { ...g.round, playStartedAt: at, answerDeadline: isSoloWritten(g) ? g.round.answerDeadline ?? at + 30_000 : undefined,
+      pending: [], events: g.round.step === 0 && g.round.events.length === 0 ? g.round.events : [...g.round.events, ev] }
   };
 }
 
@@ -143,7 +164,12 @@ export function markPlaying(g: GameState, at = Date.now()): GameState {
  * segura sin tocar puntajes, bloqueos ni historial.
  */
 export function restoreGame(g: GameState): GameState {
-  const round = { ...g.round, pending: [] };
+  const seen = new Set([g.round.buzzedPlayerId, ...g.round.lockedPlayerIds]);
+  const queue = (g.round.queue ?? []).filter((b) => {
+    if (seen.has(b.playerId) || !g.players.some((p) => p.id === b.playerId)) return false;
+    seen.add(b.playerId); return true;
+  });
+  const round = { ...g.round, queue, pending: [] };
   if (g.phase === 'playing') {
     return { ...g, phase: 'open', notice: 'Se interrumpió el fragmento: podés repetirlo.', round };
   }
@@ -162,19 +188,23 @@ export function markSnippetEnded(g: GameState): GameState {
 export function receiveBuzz(g: GameState, buzz: Buzz): GameState {
   if (!canBuzz(g, buzz.playerId)) return g;
   if (g.round.pending.some((b) => b.playerId === buzz.playerId)) return g;
+  if (g.phase === 'buzzed') return { ...g, round: { ...g.round, queue: [...(g.round.queue ?? []), buzz].sort((a, b) => a.at - b.at) } };
   return { ...g, round: { ...g.round, pending: [...g.round.pending, buzz] } };
 }
 
 /** Cierra la ventana de empate: el más rápido tiene la palabra. */
 export function resolveBuzzes(g: GameState, now = Date.now()): GameState {
-  if (!buzzersOpen(g) || g.round.pending.length === 0) return g;
-  const winner = [...g.round.pending].sort((a, b) => a.at - b.at)[0];
+  if (!buzzersOpen(g) || g.round.buzzedPlayerId) return g;
+  const [winner, ...queue] = [...(g.round.queue ?? []), ...g.round.pending]
+    .filter((b) => g.players.some((p) => p.id === b.playerId) && !g.round.lockedPlayerIds.includes(b.playerId))
+    .sort((a, b) => a.at - b.at);
+  if (!winner) return g;
   const reactionMs = g.round.playStartedAt !== undefined ? Math.max(0, winner.at - g.round.playStartedAt) : undefined;
   const ev: RoundEvent = { kind: 'buzz', playerId: winner.playerId, step: g.round.step, at: now, reactionMs };
   return {
     ...g,
     phase: 'buzzed',
-    round: { ...g.round, buzzedPlayerId: winner.playerId, pending: [], events: [...g.round.events, ev] }
+    round: { ...g.round, buzzedPlayerId: winner.playerId, pending: [], queue, events: [...g.round.events, ev] }
   };
 }
 
@@ -189,8 +219,31 @@ export function judgeCorrect(g: GameState, at = Date.now()): GameState {
     ...next,
     phase: 'revealed',
     notice: `¡${name} acertó! +${points}`,
-    round: { ...g.round, buzzedPlayerId: undefined, solvedBy: pid, events: [...g.round.events, { ...ev, kind: 'correct' }, { kind: 'reveal', step: g.round.step, at }] }
+    round: { ...g.round, buzzedPlayerId: undefined, pending: [], queue: [], solvedBy: pid, events: [...g.round.events, { ...ev, kind: 'correct' }, { kind: 'reveal', step: g.round.step, at }] }
   };
+}
+
+/** Las respuestas se comprometen antes de consultar el título, sin juez extra. */
+export function checkAnswer(g: GameState): GameState {
+  if (g.mode !== 'solo' && g.mode !== 'duel' || g.phase !== 'buzzed') return g;
+  return { ...g, round: { ...g.round, answerShown: true } };
+}
+
+/** Comparación deliberadamente estricta: no exige tildes, signos ni mayúsculas. */
+export function matchesTitle(answer: string, title: string): boolean {
+  const normalize = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+  const a = normalize(answer);
+  return a.length > 0 && a === normalize(title);
+}
+
+export function submitSoloAnswer(g: GameState, answer: string, at = Date.now()): GameState {
+  if (!isSoloWritten(g) || !['playing', 'open'].includes(g.phase) || !g.players[0] || g.round.answerDeadline === undefined) return g;
+  const expired = at >= g.round.answerDeadline;
+  if (!expired && !answer.trim()) return g;
+  const floor = resolveBuzzes({ ...g, round: { ...g.round, pending: [{ playerId: g.players[0].id, at }] } }, at);
+  const checked = checkAnswer(floor);
+  return expired ? judgeTimeout(checked, at)
+    : matchesTitle(answer, currentTrack(g)?.name ?? '') ? judgeCorrect(checked, at) : judgeWrong(checked, at);
 }
 
 function fail(g: GameState, kind: 'wrong' | 'timeout', at: number): GameState {
@@ -202,12 +255,14 @@ function fail(g: GameState, kind: 'wrong' | 'timeout', at: number): GameState {
   const name = g.players.find((p) => p.id === pid)?.name ?? '';
   const locked = g.settings.lockOnFail ? [...g.round.lockedPlayerIds, pid] : g.round.lockedPlayerIds;
   const label = kind === 'timeout' ? 'se quedó en blanco' : 'falló';
-  return {
+  const result = resolveBuzzes({
     ...next,
     phase: 'open',
     notice: `${name} ${label} (${points})`,
     round: { ...g.round, buzzedPlayerId: undefined, lockedPlayerIds: locked, events: [...g.round.events, ev] }
-  };
+  }, at);
+  // Después de mirar el título no hay nuevos intentos en autoevaluación.
+  return result.round.answerShown && result.phase === 'open' ? { ...reveal(result, at), notice: result.notice } : result;
 }
 
 export const judgeWrong = (g: GameState, at = Date.now()) => fail(g, 'wrong', at);
@@ -215,6 +270,7 @@ export const judgeTimeout = (g: GameState, at = Date.now()) => fail(g, 'timeout'
 
 /** El juez decide pasar a un fragmento más largo. */
 export function nextStep(g: GameState): GameState {
+  if (g.round.pending.length) return g;
   if (!['open', 'ready', 'playing'].includes(g.phase)) return g;
   const max = g.settings.steps.length - 1;
   return { ...g, phase: 'open', round: { ...g.round, step: Math.min(max, g.round.step + 1), pending: [] } };
@@ -231,7 +287,7 @@ export function reveal(g: GameState, at = Date.now()): GameState {
     ...g,
     phase: 'revealed',
     notice: 'Nadie la sacó',
-    round: { ...g.round, buzzedPlayerId: undefined, pending: [], events: [...g.round.events, { kind: 'reveal', step: g.round.step, at }] }
+    round: { ...g.round, buzzedPlayerId: undefined, pending: [], queue: [], events: [...g.round.events, { kind: 'reveal', step: g.round.step, at }] }
   };
 }
 
@@ -248,7 +304,7 @@ export function nextTrack(g: GameState): GameState {
 /** Saltar un tema sin jugarlo (o abandonar el actual). */
 export function skipTrack(g: GameState): GameState {
   if (['lobby', 'finished'].includes(g.phase)) return g;
-  return nextTrack({ ...g, phase: 'revealed' });
+  return nextTrack({ ...g, phase: 'revealed', round: { ...g.round, pending: [], queue: [], buzzedPlayerId: undefined } });
 }
 
 export function jumpToTrack(g: GameState, index: number): GameState {
@@ -268,13 +324,14 @@ export function finishGame(g: GameState): GameState {
   const r = g.round;
   const played = g.phase !== 'lobby' && (r.events.length > 0 || g.phase === 'revealed');
   const closed = played
-    ? { ...r, pending: [], buzzedPlayerId: undefined, ...(g.phase === 'revealed' ? {} : { abandoned: true }) }
+    ? { ...r, pending: [], queue: [], buzzedPlayerId: undefined, ...(g.phase === 'revealed' ? {} : { abandoned: true }) }
     : undefined;
   return {
     ...g,
     phase: 'finished',
     finishedAt: Date.now(),
     notice: undefined,
+    round: closed ?? { ...r, pending: [], queue: [], buzzedPlayerId: undefined },
     history: closed ? [...g.history, closed] : g.history
   };
 }
@@ -295,6 +352,8 @@ export function toPublic(g: GameState): PublicState {
     stepCount: g.settings.steps.length,
     lockedPlayerIds: g.round.lockedPlayerIds,
     buzzedPlayerId: g.round.buzzedPlayerId,
+    queuedPlayerIds: [...(g.round.queue ?? []), ...g.round.pending].sort((a, b) => a.at - b.at).map((b) => b.playerId),
+    answersClosed: !!g.round.answerShown,
     solvedBy: g.round.solvedBy,
     revealed,
     notice: g.notice,

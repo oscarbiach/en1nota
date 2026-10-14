@@ -120,7 +120,7 @@ function inPhase(phase: 'ready' | 'playing' | 'open' | 'buzzed' | 'revealed') {
   g = E.resolveBuzzes(E.receiveBuzz(g, { playerId: 'b', at: 1100 }));
   g = E.judgeWrong(g); // Beto -1, bloqueado
   if (phase === 'open') return g;
-  if (phase === 'playing') return E.markPlaying(E.receiveBuzz(g, { playerId: 'a', at: 1 }), 2000);
+  if (phase === 'playing') return E.receiveBuzz(E.markPlaying(g, 2000), { playerId: 'a', at: 2100 });
   if (phase === 'buzzed') return E.resolveBuzzes(E.receiveBuzz(E.markPlaying(g), { playerId: 'a', at: 1 }));
   if (phase === 'revealed') return E.reveal(g);
   return E.nextTrack(E.reveal(g)); // ready, tema 2
