@@ -3,6 +3,7 @@
 ## Ahora
 - El juego está completo y publicado en Render desde `claude/music-recognition-game-5vz0p8` (último cambio de la app: `09a9694`).
 - Codex sumó el 2026-10-13 cola de turnos, modos Solitario y 1 contra 1, y el diseño nuevo (`8e76dc6`, detalle y respaldo en `docs/CAMBIOS-2026-10-13.md`).
+- El panel del juez muestra abiertos otra vez Ajustes rápidos, Reproductor, Próximos y Comprobar la canción. Si Spotify deja de contestar, el panel ya no queda trabado (todo pedido tiene tope de 10 s) y Reactivar crea un reproductor nuevo (`6f6fb5c`).
 - La lista se mezcla al empezar cada partida (opción en Reglas, activada de entrada).
 - Hay controles y reglas para agentes en `.claude/` (hooks, subagentes Explore y sonnet-coder, skills `pruebas-app` y `publicar`), `AGENTS.md` y `CLAUDE.md`.
 
@@ -11,6 +12,7 @@
 - Desde las sesiones en la nube de Claude esa dirección puede estar bloqueada por la red de la sesión (2026-10-16: conexión rechazada); en ese caso el dueño abre `/healthz` en su navegador y pega el resultado.
 
 ## Pendiente del dueño
+- Volver a probar en la PC del amigo: si la música se corta, anotar el mensaje que aparece en rojo o en el panel Reproductor (ahora avisa si el reproductor se desconecta o si Spotify pide esperar).
 - Probar con Spotify real y celulares reales: los modos nuevos, la mezcla al empezar, el panel "Verificar" del juez, importar una playlist pública de otra persona y el botón "Puntajes" y el podio en los celulares.
 
 ## Sin verificar (no marcarlo como comprobado)
@@ -20,6 +22,7 @@
 ## Publicado
 | Fecha | Commit | Qué | Cómo volver atrás |
 | --- | --- | --- | --- |
+| 2026-10-16 | `6f6fb5c` | Panel del juez sin trabas si Spotify no contesta; secciones abiertas de entrada | Render → Events → Rollback, o `git revert 6f6fb5c` y push |
 | 2026-10-16 | `c8c0c4d` | `/healthz` y `/api` llegan al servidor aunque la app esté instalada | Render → Events → Rollback, o `git revert c8c0c4d` y push |
 | 2026-10-16 | `09a9694` | Mezclar la lista al empezar; reglas y controles para agentes | Render → Events → Rollback al despliegue de `8e76dc6`, o `git revert` de los commits nuevos y push |
 | 2026-10-13 | `8e76dc6` | Cola de turnos, Solitario, 1 contra 1 y diseño nuevo (Codex) | Ver `docs/CAMBIOS-2026-10-13.md` |
