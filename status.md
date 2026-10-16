@@ -6,9 +6,12 @@
 - La lista se mezcla al empezar cada partida (opción en Reglas, activada de entrada).
 - Hay controles y reglas para agentes en `.claude/` (hooks, subagentes Explore y sonnet-coder, skills `pruebas-app` y `publicar`), `AGENTS.md` y `CLAUDE.md`.
 
+## Producción
+- App: https://en1nota.onrender.com/ · estado: https://en1nota.onrender.com/healthz
+- Desde las sesiones en la nube de Claude esa dirección puede estar bloqueada por la red de la sesión (2026-10-16: conexión rechazada); en ese caso el dueño abre `/healthz` en su navegador y pega el resultado.
+
 ## Pendiente del dueño
 - Probar con Spotify real y celulares reales: los modos nuevos, la mezcla al empezar, el panel "Verificar" del juez, importar una playlist pública de otra persona y el botón "Puntajes" y el podio en los celulares.
-- Pasar la URL de su servicio en Render para que `/publicar` pueda consultar `/healthz`.
 
 ## Sin verificar (no marcarlo como comprobado)
 - La lectura de playlists públicas contra la página real de Spotify (solo se probó con páginas de ejemplo).
