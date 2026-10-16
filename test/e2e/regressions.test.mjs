@@ -620,6 +620,6 @@ test('con "Mezclar la lista al empezar" activada, cada partida sale en otro orde
   assert.deepEqual([...order].sort(), names, 'están todos, sin repetir');
   // 8 temas: que quede igual que la lista por azar tiene 1 en 40.320.
   assert.notDeepEqual(order, names, 'el orden cambió al empezar');
-  assert.ok(await j.page.locator('.stage').getByText(order[0]).first().isVisible(), 'el juez ve como tema actual el primero del nuevo orden');
+  assert.equal((await gameState(j.page)).round.trackIndex, 0, 'arranca por el primero del nuevo orden');
   await j.ctx.close();
 });

@@ -283,7 +283,7 @@ test('isRemotePlayer reconoce celulares en partidas guardadas viejas', () => {
 
 test('al empezar, la lista se mezcla (opción activada de entrada) sin perder ni repetir temas', () => {
   const tracks = [1, 2, 3, 4, 5, 6].map(track);
-  const base = { ...E.newGame(), tracks };
+  const base = { ...E.addPlayer(E.newGame(), 'Ana', 'a'), tracks };
   assert.equal(base.settings.shuffleOnStart, true);
   let seed = 7;
   const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -295,6 +295,6 @@ test('al empezar, la lista se mezcla (opción activada de entrada) sin perder ni
 
 test('con la opción apagada se respeta el orden de la lista', () => {
   const tracks = [1, 2, 3, 4].map(track);
-  const g = E.startGame({ ...E.newGame(), tracks, settings: { ...E.newGame().settings, shuffleOnStart: false } }, () => 0);
+  const g = E.startGame({ ...E.addPlayer(E.newGame(), 'Ana', 'a'), tracks, settings: { ...E.newGame().settings, shuffleOnStart: false } }, () => 0);
   assert.deepEqual(g.tracks.map((t) => t.id), ['t1', 't2', 't3', 't4']);
 });
