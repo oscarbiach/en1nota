@@ -1,0 +1,24 @@
+{
+  "env": {
+    "MAX_THINKING_TOKENS": "8000",
+    "MAX_MCP_OUTPUT_TOKENS": "15000",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet",
+    "ENABLE_TOOL_SEARCH": "true"
+  },
+  "permissions": {
+    "deny": ["Bash(git reset --hard *)", "Bash(git push --force *)", "Bash(git push -f *)"],
+    "ask": ["Bash(git push *)", "Bash(git -C * push *)", "Bash(rm -rf *)"]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Read", "hooks": [{"type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/read-budget.cjs\"", "timeout": 10}]},
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-bash.cjs\"", "timeout": 10}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "Edit|Write", "hooks": [{"type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/check-syntax.cjs\"", "timeout": 30}]}
+    ],
+    "Stop": [
+      {"hooks": [{"type": "command", "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/verificar-cierre.cjs\"", "timeout": 90}]}
+    ]
+  }
+}

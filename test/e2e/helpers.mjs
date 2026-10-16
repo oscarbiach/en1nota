@@ -11,7 +11,14 @@ export const BASE = process.env.BASE ?? 'http://127.0.0.1:8791';
  * PW_EXECUTABLE apunta a un binario concreto.
  */
 export function launch() {
-  const opts = { args: ['--autoplay-policy=no-user-gesture-required'] };
+  const opts = {
+    args: [
+      '--autoplay-policy=no-user-gesture-required',
+      // Sin salida a internet: sólo el servidor local. Lo que una prueba
+      // simula con ctx.route (api.spotify.com) se responde antes de resolver.
+      '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost'
+    ]
+  };
   if (process.env.PW_CHANNEL) opts.channel = process.env.PW_CHANNEL;
   if (process.env.PW_EXECUTABLE) opts.executablePath = process.env.PW_EXECUTABLE;
   return chromium.launch(opts);
