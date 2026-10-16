@@ -27,9 +27,10 @@ export default defineConfig({
         ]
       },
       workbox: {
-        // La app es una SPA; Spotify y el WebSocket nunca se cachean.
+        // La app es una SPA; Spotify y el WebSocket nunca se cachean. Las
+        // rutas del servidor (/healthz, /api) las responde siempre el servidor.
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/ws/],
+        navigateFallbackDenylist: [/^\/ws/, /^\/healthz/, /^\/api\//],
         globPatterns: ['**/*.{js,css,html,svg,woff2}']
       }
     })

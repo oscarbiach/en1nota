@@ -623,3 +623,16 @@ test('con "Mezclar la lista al empezar" activada, cada partida sale en otro orde
   assert.equal((await gameState(j.page)).round.trackIndex, 0, 'arranca por el primero del nuevo orden');
   await j.ctx.close();
 });
+
+test('con la app ya instalada (service worker activo), /healthz sigue mostrando el estado del servidor', async () => {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/`);
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload(); // ahora la página la controla el service worker
+  assert.ok(await page.evaluate(() => !!navigator.serviceWorker.controller), 'el service worker controla la página');
+  await page.goto(`${BASE}/healthz`);
+  const body = await page.textContent('body');
+  assert.match(body, /"ok":\s*true/, `se esperaba el JSON de estado y llegó: ${body.slice(0, 80)}`);
+  await ctx.close();
+});
