@@ -20,6 +20,7 @@
 ## Publicado
 | Fecha | Commit | Qué | Cómo volver atrás |
 | --- | --- | --- | --- |
+| 2026-10-16 | `c8c0c4d` | `/healthz` y `/api` llegan al servidor aunque la app esté instalada | Render → Events → Rollback, o `git revert c8c0c4d` y push |
 | 2026-10-16 | `09a9694` | Mezclar la lista al empezar; reglas y controles para agentes | Render → Events → Rollback al despliegue de `8e76dc6`, o `git revert` de los commits nuevos y push |
 | 2026-10-13 | `8e76dc6` | Cola de turnos, Solitario, 1 contra 1 y diseño nuevo (Codex) | Ver `docs/CAMBIOS-2026-10-13.md` |
 | 2026-10-12 | `da3aeef` | Verificar canción, playlists públicas, puntajes en celulares, textos del reproductor | Render → Events → Rollback, o `git revert` y push |
