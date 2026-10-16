@@ -53,6 +53,8 @@ try {
   }
   await judge.getByText('Lista de la partida (2)').waitFor();
 
+  await judge.getByText('4 · Reglas').click();
+  await judge.getByLabel(/Mezclar la lista al empezar/).uncheck(); // la prueba sigue el orden de la lista
   await judge.getByRole('button', { name: '¡Empezar!' }).click();
   await judge.getByText('Tema 1 / 2').waitFor();
   await player.getByText('Atenti').waitFor();

@@ -1,6 +1,7 @@
 // Motor de reglas: funciones puras sobre GameState. Sin red, sin audio.
 import type { Buzz, FinalResult, GameState, Player, PublicState, Round, RoundEvent, Settings, Track } from './types.ts';
 import { DEFAULT_SETTINGS, PLAYER_COLORS } from './types.ts';
+import { shuffle } from '../util/format.ts';
 
 export function newId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -130,10 +131,11 @@ export function adjustScore(g: GameState, id: string, delta: number): GameState 
 
 // ---------- flujo de partida ----------
 
-export function startGame(g: GameState): GameState {
+export function startGame(g: GameState, rand = Math.random): GameState {
   if (g.tracks.length === 0 || !validPlayerCount(g)) return g;
   return {
     ...g,
+    tracks: g.settings.shuffleOnStart ? shuffle(g.tracks, rand) : g.tracks,
     createdAt: Date.now(),
     phase: 'ready',
     round: newRound(0),

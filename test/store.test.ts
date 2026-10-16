@@ -112,6 +112,7 @@ test('B06: una partida de la versión anterior (sin v, sin campos nuevos) se mig
   const old = JSON.parse(JSON.stringify(g));
   delete old.round.pending;
   delete old.settings.lockOnFail;
+  delete old.settings.shuffleOnStart;
   old.players[0].remote = undefined;
   ls.setItem('en1nota.game', JSON.stringify(old));
   const loaded = S.loadGame()!;
@@ -119,6 +120,7 @@ test('B06: una partida de la versión anterior (sin v, sin campos nuevos) se mig
   assert.equal(loaded.players[0].score, 1);
   assert.deepEqual(loaded.round.pending, []);
   assert.equal(loaded.settings.lockOnFail, true);
+  assert.equal(loaded.settings.shuffleOnStart, true, 'las partidas guardadas antes de la opción también mezclan');
   assert.deepEqual(issues, []);
 });
 

@@ -44,6 +44,8 @@ export async function openJudge(browser, { clockSkewMs = 0 } = {}) {
   await page.getByLabel(/Sin reproductor/).check();
   await page.getByRole('button', { name: 'Activar reproductor' }).click();
   await page.getByText('Sin reproductor: la música la ponés vos').first().waitFor();
+  // Orden fijo en las pruebas: la mezcla al empezar tiene su propia prueba.
+  await setShuffle(page, false);
   await page.getByText(/2 · Jugadores/).click();
   const room = (await page.locator('.code').first().textContent()).trim();
   assert.match(room, /^[A-Z]{4}$/);
@@ -73,6 +75,12 @@ export async function setSteps(page, text) {
   const input = page.getByPlaceholder('0.4, 1.2, 3, 8');
   await input.fill(text);
   await input.blur();
+}
+
+/** Opción "Mezclar la lista al empezar cada partida" (pestaña Reglas). */
+export async function setShuffle(page, on) {
+  await page.getByText('4 · Reglas').click();
+  await page.getByLabel(/Mezclar la lista al empezar/).setChecked(on);
 }
 
 export async function start(page) {

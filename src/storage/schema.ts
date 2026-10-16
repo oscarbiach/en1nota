@@ -55,7 +55,8 @@ function parseSettings(v: unknown): Settings {
     pointsWrong: isNum(s.pointsWrong) ? s.pointsWrong : DEFAULT_SETTINGS.pointsWrong,
     buzzWindowMs: isNum(s.buzzWindowMs) && s.buzzWindowMs >= 0 ? s.buzzWindowMs : DEFAULT_SETTINGS.buzzWindowMs,
     revealMs: isNum(s.revealMs) && s.revealMs > 0 ? s.revealMs : DEFAULT_SETTINGS.revealMs,
-    lockOnFail: typeof s.lockOnFail === 'boolean' ? s.lockOnFail : DEFAULT_SETTINGS.lockOnFail
+    lockOnFail: typeof s.lockOnFail === 'boolean' ? s.lockOnFail : DEFAULT_SETTINGS.lockOnFail,
+    shuffleOnStart: typeof s.shuffleOnStart === 'boolean' ? s.shuffleOnStart : DEFAULT_SETTINGS.shuffleOnStart
   };
 }
 

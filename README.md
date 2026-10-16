@@ -30,7 +30,8 @@ Es una PWA en español que corre en cualquier navegador:
 | Varios tocan | se ordenan por llegada al servidor; el primero habla y el resto espera en cola. Si falla, sigue el próximo |
 
 Todo es configurable en la pestaña **Reglas**: duraciones, puntos por pasada
-(por ejemplo 3 / 2 / 1), penalizaciones y bloqueo.
+(por ejemplo 3 / 2 / 1), penalizaciones y bloqueo. De entrada la lista se
+mezcla al empezar cada partida; apagando esa opción se respeta el orden.
 
 ## Cómo se juega
 

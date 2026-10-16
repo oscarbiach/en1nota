@@ -10,7 +10,8 @@ function setup() {
   g = E.addPlayer(g, 'Ana', 'a');
   g = E.addPlayer(g, 'Beto', 'b');
   g = E.addPlayer(g, 'Cami', 'c');
-  g = { ...g, tracks: [track(1), track(2)] };
+  // Orden fijo: estas pruebas miran reglas de puntaje, no la mezcla.
+  g = { ...g, tracks: [track(1), track(2)], settings: { ...g.settings, shuffleOnStart: false } };
   return E.startGame(g);
 }
 
@@ -278,4 +279,22 @@ test('isRemotePlayer reconoce celulares en partidas guardadas viejas', () => {
   assert.equal(E.isRemotePlayer({ id: 'abcdef123456', name: 'x', color: '', score: 0, connected: true }), true);
   assert.equal(E.isRemotePlayer({ id: 'k3j2h1lmn0', name: 'x', color: '', score: 0, connected: true }), false);
   assert.equal(E.addPlayer(E.newGame(), 'Ana', 'abcdef123456', true).players[0].remote, true);
+});
+
+test('al empezar, la lista se mezcla (opción activada de entrada) sin perder ni repetir temas', () => {
+  const tracks = [1, 2, 3, 4, 5, 6].map(track);
+  const base = { ...E.newGame(), tracks };
+  assert.equal(base.settings.shuffleOnStart, true);
+  let seed = 7;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const g = E.startGame(base, rand);
+  assert.notDeepEqual(g.tracks.map((t) => t.id), tracks.map((t) => t.id));
+  assert.deepEqual(g.tracks.map((t) => t.id).sort(), tracks.map((t) => t.id).sort());
+  assert.equal(g.round.trackIndex, 0);
+});
+
+test('con la opción apagada se respeta el orden de la lista', () => {
+  const tracks = [1, 2, 3, 4].map(track);
+  const g = E.startGame({ ...E.newGame(), tracks, settings: { ...E.newGame().settings, shuffleOnStart: false } }, () => 0);
+  assert.deepEqual(g.tracks.map((t) => t.id), ['t1', 't2', 't3', 't4']);
 });

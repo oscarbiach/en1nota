@@ -34,6 +34,8 @@ export interface Settings {
   revealMs: number;
   /** El que falló queda bloqueado en ese tema. */
   lockOnFail: boolean;
+  /** Mezclar la lista al empezar cada partida. */
+  shuffleOnStart: boolean;
 }
 
 export type Phase =
@@ -142,5 +144,6 @@ export const DEFAULT_SETTINGS: Settings = {
   pointsWrong: -1,
   buzzWindowMs: 150,
   revealMs: 12000,
-  lockOnFail: true
+  lockOnFail: true,
+  shuffleOnStart: true
 };

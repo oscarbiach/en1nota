@@ -278,6 +278,7 @@ function RulesTab({ settings, onChange }: { settings: Settings; onChange: (s: Se
           <label htmlFor="cfg-window">Ventana de empate (ms): pulsaciones dentro de este margen se ordenan por hora de llegada al servidor</label>
           <input id="cfg-window" type="number" min={0} max={1000} step={50} value={settings.buzzWindowMs} onChange={(e) => onChange({ ...settings, buzzWindowMs: Math.max(0, Number(e.target.value)) })} />
         </div>
+        <label className="row"><input type="checkbox" checked={settings.shuffleOnStart} onChange={(e) => onChange({ ...settings, shuffleOnStart: e.target.checked })} />Mezclar la lista al empezar cada partida (apagalo para respetar el orden de la lista)</label>
       </div>
       <div className="card">
         <h2>Puntos</h2>

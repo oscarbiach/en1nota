@@ -5,7 +5,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import WebSocket from 'ws';
 import {
-  BASE, launch, openJudge, openTV, openPlayer, addTablePlayers, addTracks, setSteps, start, gameState, phaseLabel, until, acceptDialogs
+  BASE, launch, openJudge, openTV, openPlayer, addTablePlayers, addTracks, setSteps, setShuffle, start, gameState, phaseLabel, until, acceptDialogs
 } from './helpers.mjs';
 
 let browser;
@@ -607,4 +607,19 @@ test('sin TV: el celular muestra la tabla de puntajes y el mismo resultado final
   assert.equal(await final.getByTestId('winner-line').textContent(), await j.page.getByTestId('winner-line').textContent());
   assert.deepEqual([...j.errors, ...ana.errors], []);
   await j.ctx.close(); await ana.ctx.close();
+});
+
+test('con "Mezclar la lista al empezar" activada, cada partida sale en otro orden sin perder temas', async () => {
+  const j = await openJudge(browser);
+  await addTablePlayers(j.page, ['Ana', 'Beto']);
+  const names = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'];
+  await addTracks(j.page, names);
+  await setShuffle(j.page, true);
+  await start(j.page);
+  const order = (await gameState(j.page)).tracks.map((t) => t.name);
+  assert.deepEqual([...order].sort(), names, 'están todos, sin repetir');
+  // 8 temas: que quede igual que la lista por azar tiene 1 en 40.320.
+  assert.notDeepEqual(order, names, 'el orden cambió al empezar');
+  assert.ok(await j.page.locator('.stage').getByText(order[0]).first().isVisible(), 'el juez ve como tema actual el primero del nuevo orden');
+  await j.ctx.close();
 });
