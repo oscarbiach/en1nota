@@ -83,7 +83,6 @@ test('B07: panel del juez (lobby y juego) sin violaciones WCAG automáticas', as
   await j.page.locator('.floorname').waitFor();
   await scan(j.page, 'Juez: alguien tiene la palabra');
   await j.page.getByRole('button', { name: /Correcto/ }).click();
-  await j.page.getByText('Ajustes rápidos', { exact: true }).click();
   await j.page.getByRole('button', { name: 'Terminar partida' }).first().click();
   await j.page.getByText('Fin de la partida').waitFor();
   await scan(j.page, 'Juez: fin');

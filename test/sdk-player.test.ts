@@ -11,11 +11,14 @@ g.localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: stri
 mem.set('en1nota.spotify.token', JSON.stringify({ accessToken: 'FICTICIO', expiresAt: Date.now() + 3_600_000 }));
 const calls: string[] = [];
 /** Respuesta de la API simulada; por defecto todo OK (204). */
-let respond: (url: string, method: string) => Response = () => new Response(null, { status: 204 });
+let respond: (url: string, method: string) => Response | 'colgado' = () => new Response(null, { status: 204 });
 g.fetch = async (url: string, init: RequestInit = {}) => {
   const method = init.method ?? 'GET';
   calls.push(`${method} ${String(url).replace('https://api.spotify.com/v1', '')}`);
-  return respond(String(url), method);
+  const r = respond(String(url), method);
+  // 'colgado': Spotify nunca contesta; sólo termina si el pedido se aborta.
+  if (r === 'colgado') return new Promise<Response>((_, reject) => init.signal?.addEventListener('abort', () => reject(new Error('aborted'))));
+  return r;
 };
 const deviceNotFound = () => new Response(JSON.stringify({ error: { status: 404, message: 'Device not found' } }), { status: 404 });
 
@@ -155,4 +158,19 @@ test('Device not found persistente: reconecta el SDK y, si no alcanza, lo dice c
   assert.equal(reconnects, 1);
   assert.match(String(s.error), /no encuentra el reproductor/);
   assert.equal(p.pendingWaits, 0);
+});
+
+test('si Spotify no contesta la pausa, el fragmento termina igual y el panel no queda trabado', async () => {
+  const p = new SdkPlayer();
+  // El SDK desconectado: pause() nunca resuelve. Y la API tampoco contesta la pausa.
+  Object.assign(p, { ready: true, deviceId: 'dev', player: { pause: () => new Promise(() => {}) } });
+  respond = (url, method) => (method === 'PUT' && url.includes('/pause') ? 'colgado' : new Response(null, { status: 204 }));
+  const s = track(p.playSnippet('spotify:track:x', 0, 400));
+  await flush();
+  p.handleState(state('spotify:track:x', 50) as never);
+  for (let i = 0; i < 40 && !s.done; i++) { mock.timers.tick(1000); await flush(); }
+  assert.equal(s.done, true, 'playSnippet terminó aunque Spotify no respondió la pausa');
+  const st = track(p.stop());
+  for (let i = 0; i < 40 && !st.done; i++) { mock.timers.tick(1000); await flush(); }
+  assert.equal(st.done, true, 'stop() también termina');
 });

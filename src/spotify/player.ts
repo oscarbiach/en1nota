@@ -19,6 +19,18 @@ const CONFIRM_MS = 2000;
 
 const isDeviceNotFound = (e: unknown) => e instanceof SpotifyError && e.status === 404;
 
+/**
+ * Espera `p` como máximo `ms`. El SDK de Spotify puede no contestar nunca
+ * (se desconectó, la cuenta pasó a sonar en otro aparato): sin este tope, el
+ * panel del juez quedaba esperando para siempre.
+ */
+function withTimeout<T>(p: Promise<T> | undefined, ms: number, message: string): Promise<T | undefined> {
+  if (!p) return Promise.resolve(undefined);
+  let t: ReturnType<typeof setTimeout>;
+  return Promise.race([p, new Promise<never>((_, reject) => { t = setTimeout(() => reject(new Error(message)), ms); })])
+    .finally(() => clearTimeout(t));
+}
+
 export type PlayerMode = 'sdk' | 'connect' | 'manual';
 
 export interface SnippetPlayer {
@@ -86,12 +98,15 @@ export class SdkPlayer implements SnippetPlayer {
       // Spotify puede volver a mandar 'ready' con otro device_id si reconecta:
       // siempre usamos el último.
       player.addListener('ready', ({ device_id }) => { this.deviceId = device_id; this.ready = true; resolve(device_id); });
-      player.addListener('not_ready', () => { this.ready = false; });
+      player.addListener('not_ready', () => {
+        this.ready = false;
+        this.onStatus?.('El reproductor de este navegador se desconectó. Tocá "Reactivar" en el panel Reproductor.');
+      });
       setTimeout(() => reject(new Error('El SDK no se conectó a tiempo')), 15000);
     });
     // activateElement: necesario en móviles para que el navegador deje sonar.
-    try { await player.activateElement(); } catch { /* opcional en desktop */ }
-    const ok = await player.connect();
+    try { await withTimeout(player.activateElement(), 3000, 'activateElement'); } catch { /* opcional en desktop */ }
+    const ok = await withTimeout(player.connect(), 15000, 'El SDK no se conectó a tiempo');
     if (!ok) throw new Error('Spotify rechazó la conexión del reproductor');
     this.deviceId = await readyP;
     this.ready = true;
@@ -173,8 +188,8 @@ export class SdkPlayer implements SnippetPlayer {
    * terminó sonando en otro lado, también se corta.
    */
   private async pauseEverywhere() {
-    try { await this.player?.pause(); } catch { /* ya pausado */ }
-    try { await pauseRemote(); } catch { /* sin dispositivo activo o ya pausado */ }
+    try { await withTimeout(this.player?.pause(), 1500, 'pause'); } catch { /* ya pausado o SDK sin respuesta */ }
+    try { await pauseRemote(); } catch { /* sin dispositivo activo, ya pausado o sin respuesta (api tiene tope) */ }
   }
 
   async play(uri: string, startMs: number, maxMs?: number) {

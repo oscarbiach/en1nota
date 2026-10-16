@@ -61,7 +61,7 @@ test('solitario escrito: título oculto, acierto automático, fallo y resultado 
     await j.page.getByLabel('¿Cómo se llama la canción?').fill('No es esta');
     await j.page.getByRole('button', { name: 'Responder', exact: true }).click();
     await j.page.getByText('Otro Tema', { exact: true }).waitFor();
-    await j.page.getByRole('button', { name: 'Terminar partida', exact: true }).click();
+    await j.page.locator('.stage').getByRole('button', { name: 'Terminar partida', exact: true }).click();
     assert.equal((await gameState(j.page)).players[0].score, 0);
     assert.deepEqual(j.errors, []);
   } finally { await j.ctx.close(); }
@@ -106,7 +106,7 @@ test('duelo sin juez: ambos responden, se comprueba y el segundo gana al fallar 
     await j.page.getByRole('button', { name: /Incorrecto/ }).click();
     await j.page.locator('.floorname', { hasText: 'Beto' }).waitFor();
     await j.page.getByRole('button', { name: /Correcto/ }).click();
-    await j.page.getByRole('button', { name: 'Terminar partida', exact: true }).click();
+    await j.page.locator('.stage').getByRole('button', { name: 'Terminar partida', exact: true }).click();
     await j.page.getByTestId('winner-line').getByText('🏆 Ganó Beto').waitFor();
     assert.deepEqual(j.errors, []);
   } finally { await j.ctx.close(); }

@@ -8,7 +8,7 @@ const g = globalThis as unknown as Record<string, unknown>;
 g.localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => mem.set(k, v), removeItem: (k: string) => mem.delete(k) };
 mem.set('en1nota.spotify.token', JSON.stringify({ accessToken: 'FICTICIO', expiresAt: Date.now() + 3_600_000 }));
 
-const { playlistTracks, toTrack } = await import('../src/spotify/api.ts');
+const { api, playlistTracks, toTrack } = await import('../src/spotify/api.ts');
 
 const song = (id: string, extra: Record<string, unknown> = {}) => ({
   type: 'track', id, uri: `spotify:track:${id}`, name: `Canción ${id}`, duration_ms: 180_000,
@@ -65,4 +65,10 @@ test('playlist privada o vacía: el mensaje explica qué revisar', async () => {
     ? new Response('{}', { status: 404 })
     : new Response(JSON.stringify({ error: 'sin_canciones' }), { status: 404 }));
   await assert.rejects(playlistTracks('pqrstuvwxyzABCDEFGHIJK'), /tiene que ser pública/);
+});
+
+test('si Spotify pide esperar mucho (429 con Retry-After largo), avisa en vez de quedarse esperando', async () => {
+  g.fetch = async () => new Response('{}', { status: 429, headers: { 'Retry-After': '3600' } });
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('se quedó esperando')), 2000).unref());
+  await assert.rejects(Promise.race([api('/me/player/pause', { method: 'PUT' }), timeout]), /esperar/);
 });

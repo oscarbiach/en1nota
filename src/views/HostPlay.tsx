@@ -28,6 +28,17 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
   const gameRef = useRef(game);
   gameRef.current = game;
 
+  // Al cambiar o reactivar el reproductor, lo que esperaba al anterior ya no
+  // importa: el panel queda libre para sonar con el nuevo.
+  // Si el fragmento quedó "sonando" con el reproductor anterior, se da por terminado.
+  const firstPlayer = useRef(true);
+  useEffect(() => {
+    if (firstPlayer.current) { firstPlayer.current = false; return; }
+    busyRef.current = false; setBusy(false);
+    update(E.markSnippetEnded);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [player]);
+
   const guard = async (fn: () => Promise<void>) => {
     setErr(undefined); setBusy(true); busyRef.current = true;
     try { await fn(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); busyRef.current = false; }
@@ -170,7 +181,7 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
                 <button className="btn bad xl" onClick={wrong}>✘ Incorrecto <small>(X)</small></button>
                 <button className="btn xl" onClick={blank}>😶 En blanco</button>
               </div>}
-              {!selfJudge && <details className="utility mt"><summary>Escuchar para comprobar</summary><VerifyPlayer key={`${track.uri}-${game.round.step}-${floor.id}`} ctx={ctx} uri={track.uri} startMs={track.startMs} durationMs={track.durationMs} /></details>}
+              {!selfJudge && <details className="utility mt" open><summary>Escuchar para comprobar</summary><VerifyPlayer key={`${track.uri}-${game.round.step}-${floor.id}`} ctx={ctx} uri={track.uri} startMs={track.startMs} durationMs={track.durationMs} /></details>}
             </div>
           ) : game.phase === 'revealed' ? (
             <div className="actions">
@@ -202,7 +213,7 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
 
         <div className="col">
           <Scoreboard state={E.toPublic(game)} />
-          <details className="card soft utility">
+          <details className="card soft utility" open>
             <summary>Ajustes rápidos</summary>
             <ul className="list">
               {game.players.map((p) => (
@@ -220,8 +231,8 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
               <button className="btn sm ghost" onClick={() => { if (confirm('¿Terminar la partida ahora?')) { void player?.stop(); ctx.sfx('finish'); update(E.finishGame); } }}>Terminar partida</button>
             </div>
           </details>
-          <details className="utility"><summary>Reproductor y conexión</summary><PlayerQuick ctx={ctx} /></details>
-          {!selfJudge && <details className="card soft utility" data-testid="upcoming">
+          <details className="utility" open><summary>Reproductor y conexión</summary><PlayerQuick ctx={ctx} /></details>
+          {!selfJudge && <details className="card soft utility" data-testid="upcoming" open>
             <summary>Próximos temas</summary>
             <div className="row between">
               <h3 style={{ margin: 0 }}>Próximos</h3>
@@ -366,16 +377,14 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
   const activate = async () => {
     setErr(undefined); setBusy(true);
     try {
-      let p = player;
-      if (!p || p.mode !== mode) {
-        if (mode === 'manual') p = new ManualPlayer();
-        else if (mode === 'sdk') p = new SdkPlayer();
-        else p = new ConnectPlayer();
-        p.onStatus = ctx.setPlayerStatus;
-        ctx.setPlayer(p);
-        savePlayerMode(mode);
-      }
-      if (!p.ready) await p.init();
+      // Siempre uno nuevo: "Reactivar" sobre un reproductor que figura listo
+      // pero ya no responde (desconectado, otro dispositivo) tiene que
+      // reconectarlo de verdad. setPlayer cierra el anterior.
+      const p = mode === 'manual' ? new ManualPlayer() : mode === 'sdk' ? new SdkPlayer() : new ConnectPlayer();
+      p.onStatus = ctx.setPlayerStatus;
+      ctx.setPlayer(p);
+      savePlayerMode(mode);
+      await p.init();
     } catch (e) {
       setErr((e as Error).message);
     } finally { setBusy(false); }

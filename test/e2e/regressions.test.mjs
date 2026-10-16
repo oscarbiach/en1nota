@@ -126,7 +126,6 @@ test('A11: tras recargar en música manual, selector, etiqueta y botones coincid
   await page.locator('.stage').waitFor();
   await page.getByText('Música manual', { exact: true }).first().waitFor();
   // Primero el síntoma de la auditoría: selector y error de sesión.
-  await page.getByText('Reproductor y conexión', { exact: true }).click();
   const select = page.locator('.card.soft select');
   await until(async () => (await select.inputValue()) === 'manual', 'el selector muestra música manual');
   assert.equal(await page.getByText('Sin sesión de Spotify').count(), 0, 'sin error de sesión');
@@ -147,7 +146,6 @@ test('A06: terminar tras acertar el tema 1 de 2 conserva acierto, tema e histori
   await page.locator('.floorname', { hasText: 'Ana' }).waitFor();
   await page.getByRole('button', { name: /Correcto/ }).click();
   await page.getByText('¡Ana acertó! +1').waitFor();
-  await page.getByText('Ajustes rápidos', { exact: true }).click();
   await page.getByRole('button', { name: 'Terminar partida' }).click();
   await page.getByText('Fin de la partida').waitFor();
   // Primero el síntoma de la auditoría: la ronda actual entra al historial.
@@ -213,7 +211,6 @@ test('A07: en modo mesa no se leen los próximos temas hasta que el juez los pid
   const page = await j.page.locator('#root').innerHTML();
   for (const t of ['Tema Dos', 'Tema Tres']) assert.ok(!page.includes(t), `"${t}" no debe estar en la página`);
   const upcoming = j.page.getByTestId('upcoming');
-  await upcoming.locator('summary').click();
   const hidden = await upcoming.innerHTML();
   for (const t of ['Tema Dos', 'Tema Tres', 'Artista de']) assert.ok(!hidden.includes(t), `"${t}" no debe estar ni en el DOM`);
   assert.equal(await upcoming.getByText('Tema oculto').count(), 2);
@@ -542,13 +539,14 @@ test('B04: con el almacenamiento lleno se avisa y se puede descargar un respaldo
 // ---------- Pedidos del dueño ----------
 
 /** Juez con Spotify Connect simulado: las llamadas a api.spotify.com se registran y responden acá. */
-async function judgeWithFakeSpotify() {
+async function judgeWithFakeSpotify({ hang } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
   const calls = [];
   await ctx.route('https://api.spotify.com/**', async (route) => {
     const req = route.request();
     const path = new URL(req.url()).pathname.replace('/v1', '');
     calls.push({ method: req.method(), path, body: req.postData() ? JSON.parse(req.postData()) : null });
+    if (hang?.(path)) return; // Spotify no contesta: el pedido queda abierto
     if (path === '/me/player/devices') return route.fulfill({ json: { devices: [{ id: 'fake', name: 'Parlante', type: 'Speaker', is_active: true }] } });
     if (path === '/me') return route.fulfill({ json: { id: 'x', display_name: 'Prueba', product: 'premium' } });
     return route.fulfill({ status: 204 });
@@ -563,6 +561,26 @@ async function judgeWithFakeSpotify() {
   return { ctx, page, calls };
 }
 
+test('si Spotify deja de contestar, "Reactivar" destraba el panel y se puede volver a sonar', async () => {
+  let pauseHangs = true;
+  const { ctx, page, calls } = await judgeWithFakeSpotify({ hang: (path) => pauseHangs && path === '/me/player/pause' });
+  await addTablePlayers(page, ['Ana']);
+  await addTracks(page, ['Tema Uno']);
+  await start(page);
+  await sonar(page).click();
+  await until(() => calls.some((c) => c.path === '/me/player/pause'), 'el fragmento terminó y pidió la pausa');
+  await page.waitForTimeout(500);
+  assert.ok(await sonar(page).isDisabled(), 'mientras Spotify no contesta, el botón espera');
+  pauseHangs = false;
+  await page.getByRole('button', { name: 'Reactivar' }).click();
+  // Antes quedaba trabado hasta recargar; el tope de 10 s de la consulta no alcanza a vencer acá.
+  await until(async () => !(await sonar(page).isDisabled()), 'Reactivar libera el botón de sonar', 3000);
+  const plays = calls.filter((c) => c.path === '/me/player/play').length;
+  await sonar(page).click();
+  await until(() => calls.filter((c) => c.path === '/me/player/play').length > plays, 'vuelve a sonar');
+  await ctx.close();
+});
+
 test('el juez puede escuchar la canción para verificar mientras alguien tiene la palabra', async () => {
   const { ctx, page, calls } = await judgeWithFakeSpotify();
   await addTablePlayers(page, ['Ana']);
@@ -572,7 +590,6 @@ test('el juez puede escuchar la canción para verificar mientras alguien tiene l
   await page.keyboard.press('1');
   await page.locator('.floorname', { hasText: 'Ana' }).waitFor();
   const verify = page.getByTestId('verify');
-  await page.getByText('Escuchar para comprobar', { exact: true }).click();
   await verify.getByRole('button', { name: '+10 s' }).click();
   await verify.getByRole('button', { name: '+10 s' }).click();
   await verify.getByRole('button', { name: /Escuchar desde acá/ }).click();

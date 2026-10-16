@@ -89,11 +89,17 @@ class TokenError extends Error {
 }
 
 async function tokenRequest(body: Record<string, string>): Promise<TokenSet> {
+  // Con una red mala, el pedido del token no puede dejar esperando al reproductor.
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), 10_000);
   const res = await fetch('https://accounts.spotify.com/api/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: getClientId(), ...body })
-  });
+    body: new URLSearchParams({ client_id: getClientId(), ...body }),
+    signal: abort.signal
+  }).catch(() => {
+    throw new Error('No se pudo renovar la sesión de Spotify (sin respuesta). Revisá la conexión a internet.');
+  }).finally(() => clearTimeout(timer));
   if (!res.ok) throw new TokenError(res.status, `Spotify token: ${res.status} ${await res.text()}`);
   const j = await res.json();
   const prev = loadToken();

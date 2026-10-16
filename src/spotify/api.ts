@@ -11,16 +11,37 @@ export class SpotifyError extends Error {
   }
 }
 
+/** Ninguna consulta a Spotify espera más que esto: una red mala no traba el juego. */
+const TIMEOUT_MS = 10_000;
+/** Si Spotify pide esperar más que esto, se avisa en vez de esperar callados. */
+const MAX_RETRY_WAIT_MS = 5_000;
+
 export async function api<T = unknown>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const token = await getAccessToken();
-  const res = await fetch(path.startsWith('http') ? path : BASE + path, {
-    ...init,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) }
-  });
-  if (res.status === 429 && retry) {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(path.startsWith('http') ? path : BASE + path, {
+      ...init,
+      signal: abort.signal,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) }
+    });
+  } catch {
+    throw new SpotifyError(0, abort.signal.aborted
+      ? 'Spotify no respondió a tiempo. Revisá la conexión a internet y probá de nuevo.'
+      : 'No hay conexión con Spotify. Revisá la conexión a internet y probá de nuevo.');
+  } finally {
+    clearTimeout(timer);
+  }
+  if (res.status === 429) {
     const wait = Number(res.headers.get('Retry-After') ?? 1) * 1000;
-    await new Promise((r) => setTimeout(r, wait));
-    return api<T>(path, init, false);
+    if (retry && wait <= MAX_RETRY_WAIT_MS) {
+      await new Promise((r) => setTimeout(r, wait));
+      return api<T>(path, init, false);
+    }
+    const s = Math.ceil(wait / 1000);
+    throw new SpotifyError(429, `Spotify pide esperar ${s >= 120 ? `${Math.ceil(s / 60)} minutos` : `${s} segundos`} por demasiadas consultas seguidas. Mientras tanto podés seguir con música manual.`);
   }
   if (!res.ok) {
     let msg = res.statusText;
@@ -29,7 +50,6 @@ export async function api<T = unknown>(path: string, init: RequestInit = {}, ret
       msg = j?.error?.message ?? msg;
     } catch { /* sin cuerpo */ }
     if (res.status === 401) msg = 'La sesión de Spotify venció. Salí y volvé a conectar.';
-    if (res.status === 429) msg = 'Spotify pide esperar un momento (demasiadas consultas).';
     throw new SpotifyError(res.status, msg);
   }
   if (res.status === 204 || res.headers.get('content-length') === '0') return undefined as T;
