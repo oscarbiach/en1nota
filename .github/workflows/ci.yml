@@ -1,0 +1,50 @@
+# Control de calidad: en cada push y pull request corre lo mismo que antes
+# de publicar (validación, pruebas unitarias con cobertura, compilación y
+# pruebas en navegador). Si algo falla, el commit queda marcado en rojo.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Validación rápida (tipos, sintaxis, configuración)
+        run: node .claude/scripts/validate.mjs
+
+      - name: Pruebas unitarias con cobertura
+        run: npm run test:coverage
+
+      - name: Compilar
+        run: npm run build
+
+      - name: Navegador para las pruebas
+        run: npx playwright install --with-deps chromium
+
+      - name: Pruebas en navegador
+        run: node test/e2e/run.mjs
+
+      - name: Capturas si fallaron las pruebas en navegador
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-out
+          path: test/e2e/out
+          if-no-files-found: ignore

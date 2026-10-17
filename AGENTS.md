@@ -18,6 +18,7 @@
 
 ## Comandos
 - Validar: `node .claude/scripts/validate.mjs`. Probar: `npm test` (unitarias) y `npm run test:e2e` (navegador, compila antes). Vista previa: `npm run dev`.
+- Prueba de fuego: `node .claude/scripts/mutantes.mjs`. Al cambiar un flujo crítico, actualizá su mutante y verificá que las pruebas lo detecten. Mapa de flujos y pruebas: `docs/CALIDAD.md`.
 
 ## Restricciones
 - Push (publicar), cambios de remotos, rama predeterminada o configuración de Render requieren confirmación del usuario para cada cambio.

@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "start": "node server/index.js",
     "test": "node --test \"test/**/*.test.{ts,js}\"",
+    "test:coverage": "node --test --experimental-test-coverage \"test/**/*.test.{ts,js}\"",
     "typecheck": "tsc --noEmit",
     "test:e2e": "npm run build && node test/e2e/run.mjs"
   },

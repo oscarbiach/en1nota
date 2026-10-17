@@ -4,6 +4,7 @@
 - El juego está completo y publicado en Render desde `claude/music-recognition-game-5vz0p8` (último cambio de la app: `09a9694`).
 - Codex sumó el 2026-10-13 cola de turnos, modos Solitario y 1 contra 1, y el diseño nuevo (`8e76dc6`, detalle y respaldo en `docs/CAMBIOS-2026-10-13.md`).
 - El panel del juez muestra abiertos otra vez Ajustes rápidos, Reproductor, Próximos y Comprobar la canción. Si Spotify deja de contestar, el panel ya no queda trabado (todo pedido tiene tope de 10 s) y Reactivar crea un reproductor nuevo (`6f6fb5c`).
+- Calidad (2026-10-17): mapa de flujos y pruebas en `docs/CALIDAD.md`; GitHub Actions corre validación, unitarias con cobertura, compilación y E2E en cada push (marca en rojo, todavía no frena a Render); las 16 mutaciones de `.claude/scripts/mutantes.mjs` se detectan.
 - La lista se mezcla al empezar cada partida (opción en Reglas, activada de entrada).
 - Hay controles y reglas para agentes en `.claude/` (hooks, subagentes Explore y sonnet-coder, skills `pruebas-app` y `publicar`), `AGENTS.md` y `CLAUDE.md`.
 
