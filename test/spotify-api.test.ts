@@ -8,7 +8,7 @@ const g = globalThis as unknown as Record<string, unknown>;
 g.localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => mem.set(k, v), removeItem: (k: string) => mem.delete(k) };
 mem.set('en1nota.spotify.token', JSON.stringify({ accessToken: 'FICTICIO', expiresAt: Date.now() + 3_600_000 }));
 
-const { api, playlistTracks, toTrack } = await import('../src/spotify/api.ts');
+const { api, myPlaylists, playlistTracks, publicPlaylist, searchTracks, toTrack } = await import('../src/spotify/api.ts');
 
 const song = (id: string, extra: Record<string, unknown> = {}) => ({
   type: 'track', id, uri: `spotify:track:${id}`, name: `Canción ${id}`, duration_ms: 180_000,
@@ -71,4 +71,18 @@ test('si Spotify pide esperar mucho (429 con Retry-After largo), avisa en vez de
   g.fetch = async () => new Response('{}', { status: 429, headers: { 'Retry-After': '3600' } });
   const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('se quedó esperando')), 2000).unref());
   await assert.rejects(Promise.race([api('/me/player/pause', { method: 'PUT' }), timeout]), /esperar/);
+});
+
+test('búsqueda y "mis playlists" con ítems nulos de Spotify no rompen', async () => {
+  serve([{ tracks: { items: [null, song('a'), { type: 'episode', id: 'e', uri: 'spotify:episode:e', name: 'Pod' }, song('l', { is_local: true })] } }]);
+  assert.deepEqual((await searchTracks('algo')).map((t) => t.id), ['a']);
+  serve([{ items: [null, { id: 'p1', name: 'Mía', tracks: { total: 3 }, images: null }, { id: 5, name: 'rara' }], next: null }]);
+  assert.deepEqual(await myPlaylists(), [{ id: 'p1', name: 'Mía', total: 3, image: undefined }]);
+});
+
+test('la playlist pública que manda el servidor se revisa: ítems mal formados quedan afuera', async () => {
+  const ok = { id: 'z'.repeat(22), uri: `spotify:track:${'z'.repeat(22)}`, name: 'Buena', artists: 'Banda', durationMs: 1000 };
+  g.fetch = async () => new Response(JSON.stringify({ tracks: [ok, null, { id: 'x', name: 'Sin uri' }, { ...ok, uri: 'javascript:alert(1)' }, { ...ok, artists: 7, durationMs: -5 }] }), { status: 200 });
+  const r = await publicPlaylist('pqrstuvwxyzABCDEFGHIJK');
+  assert.deepEqual(r.map((t) => [t.name, t.artists, t.durationMs]), [['Buena', 'Banda', 1000], ['Buena', '', 0]]);
 });

@@ -69,6 +69,17 @@ interface ApiTrack {
   album?: { name: string; images: Array<{ url: string; width: number }> };
 }
 
+/**
+ * Lo que llega de Spotify se revisa antes de usarlo: una playlist puede traer
+ * ítems nulos (temas retirados), episodios o archivos locales.
+ */
+export function isSong(t: unknown): t is ApiTrack {
+  if (typeof t !== 'object' || t === null) return false;
+  const o = t as Record<string, unknown>;
+  return (o.type ?? 'track') === 'track' && o.is_local !== true
+    && typeof o.id === 'string' && typeof o.uri === 'string' && typeof o.name === 'string';
+}
+
 export function toTrack(t: ApiTrack): Track {
   const img = [...(t.album?.images ?? [])].sort((a, b) => a.width - b.width).find((i) => i.width >= 250) ?? t.album?.images?.[0];
   return {
@@ -110,7 +121,7 @@ export async function searchTracks(q: string, limit = 10): Promise<Track[]> {
     if (l) p.set('limit', String(l));
     return `/search?${p}`;
   }, limit);
-  return j.tracks.items.filter((t) => !t.is_local).map(toTrack);
+  return (j?.tracks?.items ?? []).filter(isSong).map(toTrack);
 }
 
 export interface PlaylistSummary {
@@ -125,7 +136,11 @@ export async function myPlaylists(): Promise<PlaylistSummary[]> {
   let url: string | null = '/me/playlists?limit=50';
   while (url) {
     const j: { items: Array<{ id: string; name: string; tracks: { total: number }; images: Array<{ url: string }> | null }>; next: string | null } = await api(url);
-    for (const p of j.items) out.push({ id: p.id, name: p.name, total: p.tracks?.total ?? 0, image: p.images?.[0]?.url });
+    // Spotify a veces devuelve playlists nulas (borradas o sin acceso).
+    for (const p of j.items ?? []) {
+      if (!p || typeof p.id !== 'string' || typeof p.name !== 'string') continue;
+      out.push({ id: p.id, name: p.name, total: typeof p.tracks?.total === 'number' ? p.tracks.total : 0, image: p.images?.[0]?.url });
+    }
     url = j.next;
   }
   return out;
@@ -161,9 +176,15 @@ export async function publicPlaylist(playlistId: string, apiStatus = 0): Promise
   } catch {
     throw new Error('No se pudo leer la playlist: sin conexión con el servidor del juego.');
   }
-  const j = (await res.json().catch(() => ({}))) as { tracks?: Array<{ id: string; uri: string; name: string; artists: string; durationMs: number }>; error?: string };
+  const j = (await res.json().catch(() => ({}))) as { tracks?: unknown[]; error?: string };
   if (res.ok && Array.isArray(j.tracks)) {
-    return j.tracks.map((t) => ({ id: t.id, uri: t.uri, name: t.name, artists: t.artists ?? '', album: '', durationMs: t.durationMs ?? 0, startMs: 0 }));
+    // Respuesta de nuestro servidor, que a su vez leyó una página de Spotify: se revisa igual.
+    return j.tracks.flatMap((x) => {
+      const t = (typeof x === 'object' && x !== null ? x : {}) as Record<string, unknown>;
+      if (typeof t.id !== 'string' || typeof t.uri !== 'string' || !t.uri.startsWith('spotify:track:') || typeof t.name !== 'string') return [];
+      const durationMs = typeof t.durationMs === 'number' && Number.isFinite(t.durationMs) && t.durationMs > 0 ? t.durationMs : 0;
+      return [{ id: t.id, uri: t.uri, name: t.name.slice(0, 200), artists: typeof t.artists === 'string' ? t.artists.slice(0, 200) : '', album: '', durationMs, startMs: 0 }];
+    });
   }
   if (j.error === 'sin_canciones') throw new Error('No se encontraron canciones: la playlist puede ser privada, estar vacía o tener sólo podcasts. Si es de otra persona, tiene que ser pública.');
   if (res.status === 429) throw new Error('Demasiadas consultas de playlists seguidas. Esperá un minuto y probá de nuevo.');
@@ -202,8 +223,7 @@ export async function playlistTracks(playlistId: string): Promise<{ tracks: Trac
       // B05: sólo canciones de Spotify. Episodios, archivos locales, ítems
       // retirados (null) o repetidos se omiten y se cuentan.
       const t = it?.item ?? it?.track;
-      const song = t && (t.type ?? 'track') === 'track' && !t.is_local && typeof t.id === 'string' && typeof t.uri === 'string' && typeof t.name === 'string';
-      if (!song || seen.has(t.uri)) { skipped++; continue; }
+      if (!isSong(t) || seen.has(t.uri)) { skipped++; continue; }
       seen.add(t.uri);
       out.push(toTrack(t));
     }

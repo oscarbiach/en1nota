@@ -40,9 +40,13 @@ test('sala: host, jugador, relay y reloj', async () => {
     const peer = await host.next();
     assert.equal(peer.t, 'peer'); assert.equal(peer.name, 'Ana'); assert.equal(peer.connected, true);
 
+    // El celular declara una hora falsa (5): el orden de los toques lo da la
+    // hora de llegada al servidor, no la que manda el celular.
+    const sentAt = Date.now();
     player.send({ t: 'msg', data: { k: 'buzz', at: 5 } });
     const relayed = await host.next();
-    assert.equal(relayed.t, 'msg'); assert.equal(relayed.from, joined.pid); assert.equal(relayed.data.k, 'buzz'); assert.ok(relayed.at > 0);
+    assert.equal(relayed.t, 'msg'); assert.equal(relayed.from, joined.pid); assert.equal(relayed.data.k, 'buzz');
+    assert.ok(relayed.at >= sentAt - 50 && relayed.at <= Date.now() + 50, `hora del servidor, no la del celular (llegó ${relayed.at})`);
 
     host.send({ t: 'msg', to: 'all', data: { k: 'state', state: { phase: 'ready' } } });
     const st = await player.next();

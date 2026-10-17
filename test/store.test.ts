@@ -20,6 +20,7 @@ const ls = new MemStorage();
 
 const S = await import('../src/storage/store.ts');
 const E = await import('../src/game/engine.ts');
+const { SCHEMA_VERSION } = await import('../src/storage/schema.ts');
 type Issue = Parameters<Parameters<typeof S.onStorageIssue>[0]>[0];
 
 let issues: Issue[] = [];
@@ -104,7 +105,9 @@ test('B06: JSON roto y versiones futuras tampoco bloquean', () => {
   assert.equal(S.loadGame(), null);
   ls.setItem('en1nota.game', JSON.stringify({ ...realGame(), v: 99 }));
   assert.equal(S.loadGame(), null, 'no adivina formatos de una versión futura');
-  assert.equal(quarantined().length, 2);
+  ls.setItem('en1nota.game', JSON.stringify({ ...realGame(), v: SCHEMA_VERSION + 1 }));
+  assert.equal(S.loadGame(), null, 'ni siquiera la siguiente');
+  assert.equal(quarantined().length, 3, 'las tres quedan apartadas, no se pierden');
 });
 
 test('B06: una partida de la versión anterior (sin v, sin campos nuevos) se migra', () => {

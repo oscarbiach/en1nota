@@ -58,3 +58,10 @@ test('B08: un rechazo definitivo (invalid_grant) sí cierra la sesión', async (
   assert.equal(mem.has(KEY), false);
   assert.equal(isLoggedIn(), false);
 });
+
+test('una respuesta rara de Spotify (sin access_token) no guarda una sesión rota', async () => {
+  g.fetch = async () => new Response(JSON.stringify({ token_type: 'Bearer' }), { status: 200 });
+  const r = await attempt();
+  assert.ok(r.error, 'avisa en vez de devolver un token vacío');
+  assert.equal(JSON.parse(mem.get(KEY)!).refreshToken, 'REFRESH-FICTICIO', 'la sesión anterior queda como estaba');
+});

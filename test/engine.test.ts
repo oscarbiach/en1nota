@@ -298,3 +298,21 @@ test('con la opción apagada se respeta el orden de la lista', () => {
   const g = E.startGame({ ...E.addPlayer(E.newGame(), 'Ana', 'a'), tracks, settings: { ...E.newGame().settings, shuffleOnStart: false } }, () => 0);
   assert.deepEqual(g.tracks.map((t) => t.id), ['t1', 't2', 't3', 't4']);
 });
+
+test('Correcto apretado dos veces (doble toque) suma una sola vez', () => {
+  let g = E.resolveBuzzes(E.receiveBuzz(E.markPlaying(setup(), 0), { playerId: 'a', at: 10 }), 20);
+  g = E.judgeCorrect(g);
+  const again = E.judgeCorrect(g);
+  assert.equal(again, g, 'el segundo Correcto no cambia nada');
+  assert.equal(again.players[0].score, 1);
+  assert.equal(E.judgeWrong(g), g, 'Incorrecto después de Correcto tampoco');
+});
+
+test('con menos puntos que pasadas, las pasadas extra valen lo mismo que la última', () => {
+  let g = setup();
+  g = { ...g, settings: { ...g.settings, steps: [400, 1200, 3000, 8000], pointsCorrect: [3, 2] } };
+  assert.deepEqual([0, 1, 2, 3].map((s) => E.pointsFor(g.settings, s)), [3, 2, 2, 2]);
+  for (let i = 0; i < 3; i++) g = E.nextStep(E.markSnippetEnded(E.markPlaying(g, 0)));
+  g = E.judgeCorrect(E.resolveBuzzes(E.receiveBuzz(E.markPlaying(g, 0), { playerId: 'a', at: 10 }), 20));
+  assert.equal(g.players[0].score, 2, 'acierto en la cuarta pasada');
+});

@@ -101,12 +101,15 @@ async function tokenRequest(body: Record<string, string>): Promise<TokenSet> {
     throw new Error('No se pudo renovar la sesión de Spotify (sin respuesta). Revisá la conexión a internet.');
   }).finally(() => clearTimeout(timer));
   if (!res.ok) throw new TokenError(res.status, `Spotify token: ${res.status} ${await res.text()}`);
-  const j = await res.json();
+  const j = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  // Sin un token válido no se guarda nada: la sesión anterior queda como estaba.
+  if (!j || typeof j.access_token !== 'string' || !j.access_token) throw new Error('Spotify respondió algo inesperado al renovar la sesión. Probá de nuevo en un momento.');
   const prev = loadToken();
+  const expiresIn = typeof j.expires_in === 'number' && j.expires_in > 0 ? j.expires_in : 3600;
   const t: TokenSet = {
     accessToken: j.access_token,
-    refreshToken: j.refresh_token ?? prev?.refreshToken,
-    expiresAt: Date.now() + (j.expires_in ?? 3600) * 1000 - 60_000
+    refreshToken: typeof j.refresh_token === 'string' ? j.refresh_token : prev?.refreshToken,
+    expiresAt: Date.now() + expiresIn * 1000 - 60_000
   };
   saveToken(t);
   return t;
