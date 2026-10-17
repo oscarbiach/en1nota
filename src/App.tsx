@@ -5,21 +5,7 @@ import { PlayerView } from './views/Player';
 import { ScreenView } from './views/Screen';
 import { HistoryView } from './views/History';
 import { completeLoginIfNeeded } from './spotify/auth';
-
-export interface Route {
-  path: string;
-  params: URLSearchParams;
-}
-
-function parseHash(): Route {
-  const h = location.hash.replace(/^#/, '') || '/';
-  const [path, q = ''] = h.split('?');
-  return { path, params: new URLSearchParams(q) };
-}
-
-export function navigate(to: string) {
-  location.hash = to;
-}
+import { parseHash, type Route } from './router';
 
 export function App() {
   const [route, setRoute] = useState<Route>(parseHash);

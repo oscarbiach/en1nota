@@ -10,7 +10,7 @@
 // nueva (o stop) cancela la anterior.
 import { getAccessToken } from './auth.ts';
 import { SpotifyError, devices, pauseRemote, playUri, transferTo, type Device } from './api.ts';
-import { Cancelled, Runner, runSnippet, type Op, type SnippetResult } from './run.ts';
+import { Cancelled, Runner, runSnippet, type Op } from './run.ts';
 
 export { ManualPlayer } from './manual.ts';
 
@@ -31,25 +31,8 @@ function withTimeout<T>(p: Promise<T> | undefined, ms: number, message: string):
     .finally(() => clearTimeout(t));
 }
 
-export type PlayerMode = 'sdk' | 'connect' | 'manual';
-
-export interface SnippetPlayer {
-  readonly mode: PlayerMode;
-  readonly ready: boolean;
-  readonly deviceId?: string;
-  /** Hay que llamarlo desde un gesto del usuario (click/tap). */
-  init(): Promise<void>;
-  /**
-   * Reproduce `lenMs` a partir de `startMs`. Resuelve 'done' al terminar o
-   * 'cancelled' si llamaron stop() o empezó otro fragmento. Nunca queda colgada.
-   */
-  playSnippet(uri: string, startMs: number, lenMs: number): Promise<SnippetResult>;
-  /** Reproduce sin tope hasta que llamen stop() o pase `maxMs`. */
-  play(uri: string, startMs: number, maxMs?: number): Promise<void>;
-  stop(): Promise<void>;
-  destroy(): void;
-  onStatus?: (s: string) => void;
-}
+export type { PlayerMode, SnippetPlayer } from './snippet.ts';
+import type { SnippetPlayer } from './snippet.ts';
 
 export function sdkSupported(): boolean {
   const ua = navigator.userAgent;

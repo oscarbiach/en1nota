@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { navigate } from '../App';
+import { navigate } from '../router';
 import { loadPlayerName, savePlayerName } from '../storage/store';
 import { unlockAudio } from '../audio/sfx';
 import { SoundWave } from '../components/SoundWave';

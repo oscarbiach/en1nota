@@ -5,7 +5,7 @@ import type { PublicState } from '../game/types';
 import { loadPlayerName, savePlayerName } from '../storage/store';
 import { playSfx, unlockAudio } from '../audio/sfx';
 import { RevealCard } from '../components/RevealCard';
-import { navigate } from '../App';
+import { navigate } from '../router';
 import { usePress } from '../components/press';
 import { FinalStandings, publicStandings } from '../components/FinalStandings';
 

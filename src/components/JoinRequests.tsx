@@ -1,4 +1,4 @@
-import type { HostCtx } from '../views/Host';
+import type { HostCtx } from '../views/hostCtx';
 import { isRemotePlayer } from '../game/engine';
 
 /**

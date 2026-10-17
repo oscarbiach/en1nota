@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { HostCtx } from './Host';
+import type { HostCtx } from './hostCtx';
 import * as E from '../game/engine';
 import { Scoreboard } from '../components/Scoreboard';
 import { TurnQueue } from '../components/TurnQueue';
@@ -9,7 +9,7 @@ import { JoinRequests, RoomChanged } from '../components/JoinRequests';
 import { ConnectPlayer, ManualPlayer, SdkPlayer, sdkSupported } from '../spotify/player';
 import { loadPlayerMode, savePlayerMode, type PlayerModeSetting } from '../storage/store';
 import { secs, mmss } from '../util/format';
-import { navigate } from '../App';
+import { navigate } from '../router';
 
 export function HostPlay({ ctx }: { ctx: HostCtx }) {
   const { game, update, player, room, online } = ctx;

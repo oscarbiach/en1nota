@@ -3,7 +3,7 @@ import { deleteHistory, loadHistory, type HistoryEntry } from '../storage/store'
 import { Podium } from '../components/Podium';
 import { computeStats } from '../game/engine';
 import { fecha, secs } from '../util/format';
-import { navigate } from '../App';
+import { navigate } from '../router';
 
 export function HistoryView() {
   const [items, setItems] = useState<HistoryEntry[]>(loadHistory);

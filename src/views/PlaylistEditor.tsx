@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { HostCtx } from './Host';
+import type { HostCtx } from './hostCtx';
 import type { Track } from '../game/types';
 import { myPlaylists, parsePlaylistId, playlistTracks, searchTracks, type PlaylistSummary } from '../spotify/api';
 import { deletePlaylist, loadPlaylists, savePlaylist, type SavedPlaylist } from '../storage/store';

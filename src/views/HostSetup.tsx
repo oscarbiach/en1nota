@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { HostCtx } from './Host';
+import type { HostCtx } from './hostCtx';
 import type { Settings, Track } from '../game/types';
 import * as E from '../game/engine';
 import { beginLogin, getClientId, logout, redirectUri, setClientId } from '../spotify/auth';
@@ -9,7 +9,7 @@ import { saveConnectDevice, loadConnectDevice, loadPlayerMode, savePlayerMode, s
 import { PlaylistEditor } from './PlaylistEditor';
 import { RoomQr } from '../components/RoomQr';
 import { joinUrl, screenUrl } from '../net/protocol';
-import { navigate } from '../App';
+import { navigate } from '../router';
 import { secs } from '../util/format';
 
 export function HostSetup({ ctx, setTracks, authError }: { ctx: HostCtx; setTracks: (t: Track[]) => void; authError?: string }) {

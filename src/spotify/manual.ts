@@ -1,4 +1,4 @@
-import type { SnippetPlayer } from './player.ts';
+import type { SnippetPlayer } from './snippet.ts';
 import { Runner, runSnippet } from './run.ts';
 
 /**
