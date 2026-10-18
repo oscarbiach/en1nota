@@ -4,10 +4,10 @@ import type { GameState, Track } from '../game/types';
 import * as E from '../game/engine';
 import { HostConnection } from '../net/host';
 import type { PeerInfo, SfxName } from '../net/protocol';
-import { ConnectPlayer, ManualPlayer, SdkPlayer, sdkSupported, type SnippetPlayer } from '../spotify/player';
+import { ConnectPlayer, ManualPlayer, SdkPlayer, isIOS, sdkSupported, type SnippetPlayer } from '../spotify/player';
 import { isLoggedIn } from '../spotify/auth';
 import { loadGame, loadPlayerMode, loadPreferredDevice, loadSettings, pushHistory, saveGame } from '../storage/store';
-import { playSfx } from '../audio/sfx';
+import { playSfx, setPageAudio } from '../audio/sfx';
 import { HostSetup } from './HostSetup';
 import { HostPlay } from './HostPlay';
 import { Podium } from '../components/Podium';
@@ -172,6 +172,14 @@ export function Host({ authError }: { authError?: string }) {
   }, [player, loggedIn]);
 
   useEffect(() => () => { player?.destroy(); }, [player]);
+
+  // iPhone + Spotify Connect: la música sale de la app de Spotify de este mismo
+  // celular, y cualquier sonido de la página se la corta. Efectos apagados.
+  const musicInSpotifyApp = player?.mode === 'connect' && isIOS();
+  useEffect(() => {
+    setPageAudio(!musicInSpotifyApp);
+    if (musicInSpotifyApp) setLocalSfx(false);
+  }, [musicInSpotifyApp]);
 
   const peersRef = useRef(peers);
   peersRef.current = peers;

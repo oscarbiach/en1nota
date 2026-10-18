@@ -539,8 +539,8 @@ test('B04: con el almacenamiento lleno se avisa y se puede descargar un respaldo
 // ---------- Pedidos del dueño ----------
 
 /** Juez con Spotify Connect simulado: las llamadas a api.spotify.com se registran y responden acá. */
-async function judgeWithFakeSpotify({ hang, asleep = false, devices = [{ id: 'fake', name: 'iPhone de prueba', type: 'Smartphone', is_active: true }] } = {}) {
-  const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
+async function judgeWithFakeSpotify({ hang, asleep = false, userAgent, devices = [{ id: 'fake', name: 'iPhone de prueba', type: 'Smartphone', is_active: true }] } = {}) {
+  const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, ...(userAgent ? { userAgent } : {}) });
   const calls = [];
   let playing; // lo último que se mandó a sonar, para contestar "qué está sonando"
   await ctx.route('https://api.spotify.com/**', async (route) => {
@@ -700,5 +700,25 @@ test('Spotify Connect con el aparato dormido: el juez ve qué hacer y puede volv
   assert.ok(await page.getByText(/dejá un tema sonando/).first().isVisible());
   await until(async () => !(await sonar(page).isDisabled()), 'Sonar vuelve a estar disponible', 3000);
   assert.ok(calls.some((c) => c.path === '/me/player/pause'), 'por si arranca tarde, se pausó');
+  await ctx.close();
+});
+
+test('iPhone con Spotify Connect: la página no abre audio propio (le cortaría la música a Spotify)', async () => {
+  const { ctx, page, calls } = await judgeWithFakeSpotify({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
+  await ctx.addInitScript(() => {
+    const Real = window.AudioContext;
+    window.__audioOpened = 0;
+    window.AudioContext = class extends Real { constructor(...a) { super(...a); window.__audioOpened++; } };
+  });
+  await page.reload();
+  await addTablePlayers(page, ['Ana']);
+  await addTracks(page, ['Tema Uno']);
+  await start(page);
+  await sonar(page).click();
+  await until(() => calls.some((c) => c.path === '/me/player/play'), 'mandó a reproducir');
+  await page.keyboard.press('1');
+  await page.locator('.floorname', { hasText: 'Ana' }).waitFor();
+  await page.getByRole('button', { name: /Correcto/ }).click();
+  assert.equal(await page.evaluate(() => window.__audioOpened), 0, 'ni el inicio, ni el toque, ni el acierto abrieron audio en la página');
   await ctx.close();
 });

@@ -2,8 +2,21 @@
 import type { SfxName } from '../net/protocol';
 
 let ctx: AudioContext | undefined;
+let pageAudio = true;
 
-export function unlockAudio() {
+/**
+ * En iPhone con Spotify Connect la música sale de la app de Spotify del mismo
+ * celular: cualquier audio de esta página (incluso reactivarlo con un toque)
+ * le corta la música, y en segundo plano Spotify ya no puede volver a sonar.
+ * Apagado, se cierra el audio de la página y no se vuelve a abrir.
+ */
+export function setPageAudio(on: boolean) {
+  pageAudio = on;
+  if (!on && ctx) { void ctx.close().catch(() => {}); ctx = undefined; }
+}
+
+export function unlockAudio(): AudioContext | undefined {
+  if (!pageAudio) return undefined;
   ctx ??= new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
   if (ctx.state === 'suspended') void ctx.resume();
   return ctx;
@@ -11,6 +24,7 @@ export function unlockAudio() {
 
 function tone(freq: number, start: number, dur: number, type: OscillatorType = 'square', gain = 0.25, slideTo?: number) {
   const c = unlockAudio();
+  if (!c) return;
   const o = c.createOscillator();
   const g = c.createGain();
   o.type = type;
@@ -26,6 +40,7 @@ function tone(freq: number, start: number, dur: number, type: OscillatorType = '
 
 function noise(start: number, dur: number, gain = 0.2) {
   const c = unlockAudio();
+  if (!c) return;
   const buf = c.createBuffer(1, c.sampleRate * dur, c.sampleRate);
   const d = buf.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);

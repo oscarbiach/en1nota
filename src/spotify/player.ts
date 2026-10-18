@@ -37,10 +37,13 @@ function withTimeout<T>(p: Promise<T> | undefined, ms: number, message: string):
 export type { PlayerMode, SnippetPlayer } from './snippet.ts';
 import type { SnippetPlayer } from './snippet.ts';
 
+export function isIOS(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
 export function sdkSupported(): boolean {
-  const ua = navigator.userAgent;
-  const iOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  return !iOS && typeof window !== 'undefined' && 'MediaSource' in window;
+  return !isIOS() && typeof window !== 'undefined' && 'MediaSource' in window;
 }
 
 let sdkLoading: Promise<void> | null = null;

@@ -7,6 +7,7 @@
 - Calidad (2026-10-17): mapa de flujos y pruebas en `docs/CALIDAD.md`; GitHub Actions corre validación, unitarias con cobertura, compilación y E2E en cada push (marca en rojo, todavía no frena a Render); las 16 mutaciones de `.claude/scripts/mutantes.mjs` se detectan.
 - Spotify Connect recuerda el aparato elegido (id y nombre) y el panel de juego muestra «Suena en: …» con selector; antes, al recargar o reactivar, la música iba al aparato activo de la cuenta (un Echo Pop).
 - Spotify Connect confirma que el aparato suena antes de contar el fragmento; si no arranca (iPhone con Spotify dormido en segundo plano) avisa qué hacer. Sin verificar en un iPhone real.
+- iPhone + Spotify Connect: la página no abre audio propio (efectos apagados); si sonara, iOS le corta la música a la app de Spotify y en segundo plano no vuelve. Hipótesis del caso «el tema se corta al tocar Sonar y no suena nada»; sin verificar en un iPhone real.
 - Spotify Connect solo usa celulares (decisión del dueño): parlantes como el Echo Pop ya no se listan ni se eligen.
 - La lista se mezcla al empezar cada partida (opción en Reglas, activada de entrada).
 - Hay controles y reglas para agentes en `.claude/` (hooks, subagentes Explore y sonnet-coder, skills `pruebas-app` y `publicar`), `AGENTS.md` y `CLAUDE.md`.

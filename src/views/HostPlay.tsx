@@ -6,7 +6,7 @@ import { TurnQueue } from '../components/TurnQueue';
 import { SoundWave } from '../components/SoundWave';
 import { usePress } from '../components/press';
 import { JoinRequests, RoomChanged } from '../components/JoinRequests';
-import { ConnectPlayer, ManualPlayer, SdkPlayer, sdkSupported } from '../spotify/player';
+import { ConnectPlayer, ManualPlayer, SdkPlayer, isIOS, sdkSupported } from '../spotify/player';
 import { loadConnectDevice, loadPlayerMode, loadPreferredDevice, saveConnectDevice, savePlayerMode, type PlayerModeSetting } from '../storage/store';
 import { phoneDevices, type Device } from '../spotify/api';
 import { secs, mmss } from '../util/format';
@@ -429,6 +429,7 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
             </select>
             <button className="btn sm" onClick={() => void loadDevs()}>Buscar</button>
           </div>
+          {isIOS() && <p className="muted small mt">En iPhone los efectos de sonido del juego quedan apagados: si sonaran, el iPhone le cortaría la música a Spotify.</p>}
           <p className="muted small mt">Para que suene en este celular: abrí la app de Spotify acá, poné play en cualquier tema, volvé a esta página, tocá Buscar, elegí el celular y tocá «Usar este aparato».</p>
         </>
       )}
