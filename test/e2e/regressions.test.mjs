@@ -765,3 +765,97 @@ test('iPhone con «Vista previa»: el fragmento suena en la página y se corta s
   assert.ok(asked.some((u) => u.endsWith(`/api/spotify/preview/${id}`)), 'pidió la muestra de ese tema');
   await ctx.close();
 });
+
+/** Juez en iPhone con «Suena en este celular» y un SDK de Spotify falso que anda o falla. */
+async function iphoneJudgeWithSdk(sdkWorks) {
+  const n = 16000;
+  const wav = Buffer.alloc(44 + n, 128);
+  wav.write('RIFF', 0); wav.writeUInt32LE(36 + n, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(8000, 28);
+  wav.writeUInt16LE(1, 32); wav.writeUInt16LE(8, 34); wav.write('data', 36); wav.writeUInt32LE(n, 40);
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
+  const calls = [];
+  await ctx.route('https://api.spotify.com/**', (route) => {
+    const req = route.request();
+    const u = new URL(req.url());
+    calls.push({ path: u.pathname.replace('/v1', ''), device: u.searchParams.get('device_id') });
+    if (u.pathname.endsWith('/me')) return route.fulfill({ json: { id: 'x', display_name: 'Prueba', product: 'premium' } });
+    return route.fulfill({ status: 204 });
+  });
+  await ctx.route('**/api/spotify/preview/**', (route) => route.fulfill({ json: { url: `data:audio/wav;base64,${wav.toString('base64')}` } }));
+  await ctx.addInitScript((works) => {
+    window.__media = []; window.__activations = 0;
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () { window.__media.push(this.src.length > 20000 ? 'muestra' : 'silencio'); return play.call(this); };
+    class Player {
+      constructor() { this.l = {}; window.__sdk = this; }
+      addListener(ev, fn) { (this.l[ev] ??= []).push(fn); return true; }
+      emit(ev, x) { (this.l[ev] || []).forEach((f) => f(x)); }
+      activateElement() { window.__activations++; return Promise.resolve(); }
+      connect() {
+        setTimeout(() => works ? this.emit('ready', { device_id: 'sdk-dev' }) : this.emit('initialization_error', { message: 'Failed to initialize player' }), 30);
+        return Promise.resolve(true);
+      }
+      pause() { return Promise.resolve(); }
+      resume() { return Promise.resolve(); }
+      disconnect() {}
+    }
+    window.Spotify = { Player };
+    // Cuando la página manda a sonar por la Web API, el SDK falso avisa que suena.
+    const f = window.fetch;
+    window.fetch = async (input, init) => {
+      const r = await f(input, init);
+      const url = String(input?.url ?? input);
+      if (url.includes('/me/player/play') && window.__sdk && works !== 'mudo') {
+        const b = JSON.parse(init.body);
+        setTimeout(() => window.__sdk.emit('player_state_changed', { paused: false, position: b.position_ms, duration: 200000, timestamp: Date.now(), track_window: { current_track: { uri: b.uris[0] } } }), 50);
+      }
+      return r;
+    };
+  }, sdkWorks);
+  const page = await ctx.newPage();
+  const id = 'c'.repeat(22);
+  await page.goto(BASE);
+  await page.evaluate((id) => {
+    localStorage.setItem('en1nota.spotify.token', JSON.stringify({ accessToken: 'FICTICIO-NO-SALE', expiresAt: Date.now() + 3_600_000 }));
+    localStorage.setItem('en1nota.playerMode', JSON.stringify('sdk'));
+    localStorage.setItem('en1nota.playlists', JSON.stringify([{ id: 'p1', name: 'De Spotify', updatedAt: 1,
+      tracks: [{ id, uri: `spotify:track:${id}`, name: 'Tema Uno', artists: 'Banda', album: '', durationMs: 180000, startMs: 0 }] }]));
+  }, id);
+  await page.goto(`${BASE}/#/juez`);
+  await addTablePlayers(page, ['Ana']);
+  await page.getByText(/3 · Canciones/).click();
+  await page.getByRole('button', { name: 'Cargar' }).click();
+  await start(page);
+  return { ctx, page, calls };
+}
+
+test('iPhone con «Suena en este celular»: si Spotify lo permite, suena la canción completa en la página', async () => {
+  const { ctx, page, calls } = await iphoneJudgeWithSdk(true);
+  await sonar(page).click();
+  await until(() => calls.some((c) => c.path === '/me/player/play' && c.device === 'sdk-dev'), 'manda la canción al reproductor de esta página');
+  await until(async () => (await phaseLabel(page)) !== 'Sonando…', 'el fragmento terminó', 5000);
+  assert.equal(await page.getByText(/Pasé a «Vista previa»/).count(), 0, 'no pasó a vista previa');
+  assert.ok(await page.evaluate(() => window.__activations) >= 1, 'habilitó el sonido en el toque');
+  await ctx.close();
+});
+
+test('iPhone con «Suena en este celular»: si Spotify no lo permite, pasa sola a Vista previa y sigue sonando', async () => {
+  const { ctx, page } = await iphoneJudgeWithSdk(false);
+  // Falló al empezar (el primer toque): la partida arranca igual, con Vista previa y el aviso a la vista.
+  await page.getByText(/Se usa «Vista previa»/).first().waitFor({ timeout: 10_000 });
+  await sonar(page).click();
+  await until(async () => (await page.evaluate(() => window.__media)).includes('muestra'), 'suena la muestra', 5000);
+  await ctx.close();
+});
+
+test('iPhone con «Suena en este celular»: si el reproductor arranca pero el tema no suena, pasa a Vista previa', async () => {
+  const { ctx, page } = await iphoneJudgeWithSdk('mudo');
+  await sonar(page).click();
+  await page.getByText(/Pasé a «Vista previa»/).waitFor({ timeout: 10_000 });
+  await until(async () => !(await sonar(page).isDisabled()), 'se puede volver a sonar', 3000);
+  await sonar(page).click();
+  await until(async () => (await page.evaluate(() => window.__media)).includes('muestra'), 'suena la muestra', 5000);
+  await ctx.close();
+});

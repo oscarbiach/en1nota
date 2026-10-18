@@ -45,17 +45,32 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
     try { await fn(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); busyRef.current = false; }
   };
 
+  /**
+   * iPhone: si Spotify no deja sonar la canción completa en el navegador, el
+   * juego no queda mudo: pasa solo a Vista previa (para esta sesión; la
+   * próxima vez vuelve a intentar la canción completa).
+   */
+  const fallBackToPreview = (e: unknown): never => {
+    if (player?.mode === 'sdk' && isIOS()) {
+      const v = new PreviewPlayer();
+      v.onStatus = ctx.setPlayerStatus;
+      ctx.setPlayer(v);
+      throw new Error(`En este iPhone Spotify no dejó sonar la canción completa (${(e as Error).message}). Pasé a «Vista previa» (30 s de muestra): tocá Sonar de nuevo.`);
+    }
+    throw e;
+  };
+
   const play = () => {
     if (busyRef.current || gameRef.current.round.pending.length) return; // la tecla espacio no pasa por el botón deshabilitado
     return guard(async () => {
       if (!player) throw new Error('No hay reproductor configurado. Elegí uno en el panel "Reproductor" de la derecha.');
-      if (!player.ready) await player.init();
+      if (!player.ready) await player.init().catch(fallBackToPreview);
       // Misma base temporal que las pulsaciones (B03). Mide desde la orden de
       // reproducir, no desde que el audio se oye.
       const at = ctx.now();
       update((g) => E.markPlaying(g, at));
       try {
-        await player.playSnippet(track.uri, track.startMs, len);
+        await player.playSnippet(track.uri, track.startMs, len).catch(fallBackToPreview);
       } finally {
         // Terminó, se canceló o falló: esta pasada deja de "sonar" y se puede
         // repetir. Si ya arrancó otra (o alguien tocó), no la tocamos.
@@ -413,7 +428,7 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
       </div>
       <div className="row">
         <select aria-label="Reproductor" value={mode} onChange={(e) => setMode(e.target.value as PlayerModeSetting)} className="grow">
-          {sdkSupported() && <option value="sdk">Suena en este navegador</option>}
+          {sdkSupported() && <option value="sdk">{isIOS() ? 'Suena en este celular (canción completa)' : 'Suena en este navegador'}</option>}
           <option value="preview">Vista previa en este aparato (30 s)</option>
           <option value="connect">App de Spotify (Connect)</option>
           <option value="manual">Música manual (sin Spotify)</option>

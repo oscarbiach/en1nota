@@ -36,9 +36,14 @@ function state(uri: string, position: number, paused = false, linkedFrom?: strin
 function ready() {
   const p = new SdkPlayer();
   let pauses = 0;
-  const fake = { pause: async () => { pauses++; } };
+  const calls: string[] = [];
+  const fake = {
+    pause: async () => { pauses++; },
+    resume: async () => { calls.push('resume'); },
+    activateElement: async () => { calls.push('activar'); }
+  };
   Object.assign(p, { ready: true, deviceId: 'dev', player: fake });
-  return { p, pauses: () => pauses };
+  return { p, pauses: () => pauses, calls };
 }
 
 beforeEach(() => {
@@ -173,4 +178,35 @@ test('si Spotify no contesta la pausa, el fragmento termina igual y el panel no 
   const st = track(p.stop());
   for (let i = 0; i < 40 && !st.done; i++) { mock.timers.tick(1000); await flush(); }
   assert.equal(st.done, true, 'stop() también termina');
+});
+
+test('iPhone: el sonido se habilita dentro del toque (antes de cualquier espera) y un tema que llega en pausa se reanuda', async () => {
+  const { p, calls } = ready();
+  const s = track(p.playSnippet('spotify:track:x', 0, 400));
+  assert.deepEqual(calls, ['activar'], 'activateElement en el mismo momento del toque');
+  await flush();
+  p.handleState(state('spotify:track:x', 0, true) as never); // llegó cargado pero en pausa
+  await flush();
+  assert.deepEqual(calls, ['activar', 'resume']);
+  p.handleState(state('spotify:track:x', 20) as never);
+  await flush();
+  mock.timers.tick(400);
+  await flush();
+  assert.equal(s.value, 'done');
+});
+
+test('iPhone: si Spotify no confirma que suena, avisa en vez de contar el fragmento en silencio', async () => {
+  const nav = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', { value: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', platform: 'iPhone', maxTouchPoints: 5 }, configurable: true });
+  try {
+    const { p, pauses } = ready();
+    const s = track(p.playSnippet('spotify:track:x', 0, 400));
+    await flush();
+    mock.timers.tick(2500);
+    await flush();
+    assert.match(String((s.error as Error)?.message), /no llegó a sonar en este iPhone/);
+    assert.ok(pauses() >= 1, 'por las dudas, se pausa');
+  } finally {
+    if (nav) Object.defineProperty(globalThis, 'navigator', nav); else delete (globalThis as Record<string, unknown>).navigator;
+  }
 });

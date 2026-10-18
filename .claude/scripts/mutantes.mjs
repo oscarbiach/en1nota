@@ -29,6 +29,8 @@ const M = [
   ['Connect solo suena en celulares', 'src/spotify/api.ts', "return (await devices()).filter((d) => d.type === 'Smartphone');", 'return devices();'],
   ['en iPhone con Connect la página no abre audio propio', 'src/audio/sfx.ts', '  if (!pageAudio) return undefined;\n', ''],
   ['Vista previa corta el fragmento a tiempo', 'src/spotify/preview.ts', '      await op.sleep(Math.min(lenMs, PREVIEW_MS));\n      this.audio?.pause();\n', '      await op.sleep(Math.min(lenMs, PREVIEW_MS));\n'],
+  ['iPhone: sin confirmación del SDK se avisa (no mudo)', 'src/spotify/player.ts', '      if (!s && isIOS()) {', '      if (false) {'],
+  ['iPhone: el sonido se habilita dentro del toque', 'src/spotify/player.ts', '    if (!this.ready || !this.player) return Promise.reject(new Error(\'Reproductor no inicializado\'));\n    this.activateNow();', '    if (!this.ready || !this.player) return Promise.reject(new Error(\'Reproductor no inicializado\'));'],
   ['la consulta a Spotify tiene tope de tiempo', 'src/spotify/api.ts', 'const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);', 'const timer = setTimeout(() => {}, TIMEOUT_MS);'],
 ];
 const results = [];

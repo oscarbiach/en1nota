@@ -46,13 +46,25 @@ export function isIOS(): boolean {
   return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
+/**
+ * Spotify lista Safari de iPhone como compatible con el Web Playback SDK,
+ * con la condición de que el sonido arranque desde un toque. En iPhone se
+ * intenta siempre; si Spotify no deja sonar, el panel pasa solo a Vista
+ * previa (HostPlay).
+ */
 export function sdkSupported(): boolean {
-  return !isIOS() && typeof window !== 'undefined' && 'MediaSource' in window;
+  if (typeof window === 'undefined') return false;
+  return isIOS() || 'MediaSource' in window || 'ManagedMediaSource' in window;
 }
 
-/** Sin elección guardada: en el navegador si se puede; en iPhone, la vista previa (Connect al mismo iPhone no arranca). */
+/** Sin elección guardada: la canción completa en este aparato. */
 export function defaultPlayerMode(): 'sdk' | 'preview' | 'connect' {
   return sdkSupported() ? 'sdk' : isIOS() ? 'preview' : 'connect';
+}
+
+/** Carga el SDK antes del primer toque: en iPhone, cualquier espera dentro del toque hace perder el permiso de sonar. */
+export function preloadSdk() {
+  if (typeof window !== 'undefined') void loadSdk().catch(() => {});
 }
 
 let sdkLoading: Promise<void> | null = null;
@@ -81,17 +93,19 @@ export class SdkPlayer implements SnippetPlayer {
   async init() {
     if (this.ready) return;
     this.onStatus?.('Cargando SDK…');
-    await loadSdk();
+    // Si el SDK ya está precargado no hay ninguna espera antes de
+    // activateElement: en iPhone tiene que pasar dentro del mismo toque.
+    if (!window.Spotify) await loadSdk();
     const player = new window.Spotify!.Player({
       name: 'En 1 Nota',
       getOAuthToken: (cb) => { getAccessToken().then(cb).catch(() => cb('')); },
       volume: 1
     });
     this.player = player;
+    // activateElement: necesario en celulares para que el navegador deje sonar.
+    const activated = withTimeout(player.activateElement(), 3000, 'activateElement').catch(() => { /* opcional en desktop */ });
     player.addListener('player_state_changed', (s) => this.handleState(s));
-    for (const ev of ['initialization_error', 'authentication_error', 'account_error', 'playback_error'] as const) {
-      player.addListener(ev, (e) => this.onStatus?.(`${ev}: ${e.message}`));
-    }
+    player.addListener('playback_error', (e) => this.onStatus?.(`playback_error: ${e.message}`));
     const readyP = new Promise<string>((resolve, reject) => {
       // Spotify puede volver a mandar 'ready' con otro device_id si reconecta:
       // siempre usamos el último.
@@ -100,10 +114,22 @@ export class SdkPlayer implements SnippetPlayer {
         this.ready = false;
         this.onStatus?.('El reproductor de este navegador se desconectó. Tocá "Reactivar" en el panel Reproductor.');
       });
+      // Errores que impiden sonar: se informan enseguida en vez de esperar 15 s.
+      const why = {
+        initialization_error: 'este navegador no puede reproducir Spotify completo',
+        authentication_error: 'la sesión de Spotify venció: salí y volvé a conectar',
+        account_error: 'Spotify exige Premium para sonar en el navegador'
+      } as const;
+      for (const ev of Object.keys(why) as Array<keyof typeof why>) {
+        player.addListener(ev, (e) => {
+          this.onStatus?.(`${ev}: ${e.message}`);
+          reject(new Error(`No se pudo activar el reproductor: ${why[ev]} (${e.message}).`));
+        });
+      }
       setTimeout(() => reject(new Error('El SDK no se conectó a tiempo')), 15000);
     });
-    // activateElement: necesario en móviles para que el navegador deje sonar.
-    try { await withTimeout(player.activateElement(), 3000, 'activateElement'); } catch { /* opcional en desktop */ }
+    readyP.catch(() => { /* se informa abajo */ });
+    await activated;
     const ok = await withTimeout(player.connect(), 15000, 'El SDK no se conectó a tiempo');
     if (!ok) throw new Error('Spotify rechazó la conexión del reproductor');
     this.deviceId = await readyP;
@@ -132,11 +158,15 @@ export class SdkPlayer implements SnippetPlayer {
         off();
         this.stateWaiters = this.stateWaiters.filter((w) => w !== check);
       };
+      let resumed = false;
       const check = (s: Spotify.PlaybackState) => {
         const cur = s.track_window?.current_track;
         const sameTrack = !!cur && (cur.uri === uri || cur.linked_from?.uri === uri);
         const nearStart = s.position >= startMs - 1500 && s.position <= startMs + 4000;
         if (!s.paused && sameTrack && nearStart) { done(); resolve(s); }
+        // iPhone: el tema llega cargado pero en pausa (Spotify no arranca solo
+        // tras una orden remota). Con el audio ya habilitado en el toque, se reanuda acá.
+        else if (s.paused && sameTrack && nearStart && !resumed) { resumed = true; try { void this.player?.resume().catch(() => {}); } catch { /* sin SDK */ } }
       };
       const t = setTimeout(() => { done(); reject(new Error('Spotify no confirmó la reproducción')); }, timeoutMs);
       const off = op.onCancel(done);
@@ -192,6 +222,7 @@ export class SdkPlayer implements SnippetPlayer {
 
   async play(uri: string, startMs: number, maxMs?: number) {
     if (!this.ready || !this.player) throw new Error('Reproductor no inicializado');
+    this.activateNow();
     const op = this.runner.begin();
     await runSnippet(async () => {
       await this.startPlayback(uri, startMs, op);
@@ -201,8 +232,14 @@ export class SdkPlayer implements SnippetPlayer {
     });
   }
 
+  /** Dentro del toque (Sonar): en iPhone es lo que deja sonar después. */
+  private activateNow() {
+    try { void this.player?.activateElement().catch(() => {}); } catch { /* sin SDK */ }
+  }
+
   playSnippet(uri: string, startMs: number, lenMs: number) {
     if (!this.ready || !this.player) return Promise.reject(new Error('Reproductor no inicializado'));
+    this.activateNow();
     const op = this.runner.begin();
     return runSnippet(async () => {
       // La espera se registra antes del play: el evento puede llegar enseguida.
@@ -214,6 +251,12 @@ export class SdkPlayer implements SnippetPlayer {
       // (el audio pudo ir a otro dispositivo), contamos desde la orden: el
       // fragmento se corta igual a tiempo.
       const s = await op.wait(playing.catch((e) => (e instanceof Cancelled ? Promise.reject(e) : null)));
+      // En iPhone el audio no puede haberse ido a otro aparato: sin confirmación
+      // es que no sonó. Se avisa (y el panel pasa a Vista previa) en vez de seguir mudo.
+      if (!s && isIOS()) {
+        await this.pauseEverywhere();
+        throw new Error('Spotify no llegó a sonar en este iPhone');
+      }
       const elapsed = s ? Math.max(0, s.position - startMs) : performance.now() - sentAt;
       await op.sleep(Math.max(0, lenMs - elapsed));
       await this.pauseEverywhere();
