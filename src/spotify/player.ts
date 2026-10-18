@@ -9,7 +9,7 @@
 // Todos cumplen el contrato de run.ts: cada operación termina siempre, y una
 // nueva (o stop) cancela la anterior.
 import { getAccessToken } from './auth.ts';
-import { SpotifyError, devices, pauseRemote, playUri, playbackState, transferTo, type Device, type PlaybackState } from './api.ts';
+import { SpotifyError, phoneDevices, pauseRemote, playUri, playbackState, transferTo, type Device, type PlaybackState } from './api.ts';
 import { Cancelled, Runner, runSnippet, type Op } from './run.ts';
 
 export { ManualPlayer } from './manual.ts';
@@ -257,7 +257,7 @@ export class ConnectPlayer implements SnippetPlayer {
   }
 
   async listDevices() {
-    return devices();
+    return phoneDevices();
   }
 
   setDevice(d: Device) {
@@ -267,8 +267,8 @@ export class ConnectPlayer implements SnippetPlayer {
 
   async init() {
     if (!this.deviceId) {
-      const d = pickDevice(await devices(), this.preferred);
-      if (!d) throw new Error('Abrí la app de Spotify en algún dispositivo y volvé a intentar.');
+      const d = pickDevice(await phoneDevices(), this.preferred);
+      if (!d) throw new Error('Spotify no ve ningún celular. Abrí la app de Spotify en tu iPhone, poné play un segundo y volvé a intentar.');
       this.setDevice(d);
     }
     this.ready = true;
@@ -285,10 +285,10 @@ export class ConnectPlayer implements SnippetPlayer {
       await op.wait(playUri(this.deviceId, uri, startMs));
     } catch (e) {
       if (!isDeviceNotFound(e)) throw e;
-      const ds = await op.wait(devices());
+      const ds = await op.wait(phoneDevices());
       // El mismo aparato con otro id antes que el activo: no saltar a otro parlante.
       const d = pickDevice(ds.filter((x) => x.id !== this.deviceId), { name: this.device?.name ?? this.preferred?.name });
-      if (!d) throw new Error('Spotify no encuentra ningún dispositivo (Device not found). Abrí la app de Spotify en el celular o la compu y tocá "Reactivar".');
+      if (!d) throw new Error('Spotify no encuentra tu celular (Device not found). Abrí la app de Spotify en el iPhone, poné play un segundo y tocá "Reactivar".');
       this.setDevice(d);
       this.onStatus?.(`Suena en: ${d.name}`);
       await op.wait(playUri(this.deviceId, uri, startMs));
@@ -334,7 +334,7 @@ export class ConnectPlayer implements SnippetPlayer {
         try { await pauseRemote(this.deviceId); } catch { /* por si arranca tarde */ }
         throw new Error(`Spotify aceptó la orden pero en «${this.device?.name ?? 'el aparato'}» no empezó a sonar. `
           + 'Si es este iPhone: Spotify se duerme cuando queda en pausa en segundo plano. Abrí la app de Spotify, dejá un tema sonando, volvé y tocá Sonar. '
-          + 'Más firme: elegí un parlante (Echo, compu) en «Reproductor y conexión».');
+          + 'Si sigue sin sonar, usá música manual mientras tanto.');
       }
       // Visible en «Reproductor y conexión»: sirve para saber qué dice Spotify cuando no se oye nada.
       this.onStatus?.(`Suena en: ${this.device?.name} · Spotify confirmó el último fragmento (${new Date().toLocaleTimeString('es-AR')})`);

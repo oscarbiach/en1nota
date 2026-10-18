@@ -26,6 +26,7 @@ const M = [
   ['Spotify pidiendo esperar mucho no traba', 'src/spotify/api.ts', 'if (retry && wait <= MAX_RETRY_WAIT_MS) {', 'if (retry) {'],
   ['Connect suena en el aparato elegido, no en el activo', 'src/spotify/player.ts', 'return (preferred?.id ? ds.find((x) => x.id === preferred.id) : undefined)', 'return ds.find((x) => x.is_active) ?? (preferred?.id ? ds.find((x) => x.id === preferred.id) : undefined)'],
   ['Connect espera a que el aparato suene antes de contar', 'src/spotify/player.ts', "if (s?.isPlaying && sameTrack && (!s.deviceId || s.deviceId === this.deviceId)) return s;", "return s ?? { isPlaying: true, progressMs: 0 };"],
+  ['Connect solo suena en celulares', 'src/spotify/api.ts', "return (await devices()).filter((d) => d.type === 'Smartphone');", 'return devices();'],
   ['la consulta a Spotify tiene tope de tiempo', 'src/spotify/api.ts', 'const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);', 'const timer = setTimeout(() => {}, TIMEOUT_MS);'],
 ];
 const results = [];

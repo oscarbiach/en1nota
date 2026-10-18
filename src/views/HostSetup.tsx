@@ -3,7 +3,7 @@ import type { HostCtx } from './hostCtx';
 import type { Settings, Track } from '../game/types';
 import * as E from '../game/engine';
 import { beginLogin, getClientId, logout, redirectUri, setClientId } from '../spotify/auth';
-import { getMe, devices, type Device, type Me } from '../spotify/api';
+import { getMe, phoneDevices, type Device, type Me } from '../spotify/api';
 import { ConnectPlayer, ManualPlayer, SdkPlayer, sdkSupported } from '../spotify/player';
 import { saveConnectDevice, loadConnectDevice, loadPlayerMode, savePlayerMode, saveSettings, type PlayerModeSetting } from '../storage/store';
 import { PlaylistEditor } from './PlaylistEditor';
@@ -101,7 +101,7 @@ function SpotifyTab({ ctx }: { ctx: HostCtx }) {
   }, [ctx.loggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refreshDevices = async () => {
-    try { const d = await devices(); setDevs(d); if (!devId && d[0]) setDevId(d.find((x) => x.is_active)?.id ?? d[0].id); }
+    try { const d = await phoneDevices(); setDevs(d); if (!devId && d[0]) setDevId(d.find((x) => x.is_active)?.id ?? d[0].id); }
     catch (e) { setErr((e as Error).message); }
   };
   useEffect(() => { if (ctx.loggedIn && mode === 'connect') void refreshDevices(); }, [ctx.loggedIn, mode]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -172,7 +172,7 @@ function SpotifyTab({ ctx }: { ctx: HostCtx }) {
             <b>Suena en este navegador</b>: la música sale por este aparato (la compu o el celu del juez, o el parlante conectado a él). {sdkSupported() ? 'Recomendado: los fragmentos cortos son exactos.' : 'No disponible en iPhone/iPad.'}
           </label>
           <label><input type="radio" checked={mode === 'connect'} onChange={() => setMode('connect')} />
-            <b>App de Spotify (Spotify Connect)</b>: la música sale por la app de Spotify abierta en otro aparato (celular, compu, parlante inteligente) y esta página la maneja como control remoto. Útil en iPhone. Los fragmentos de menos de 1 s salen imprecisos.
+            <b>App de Spotify en el celular (Spotify Connect)</b>: la música sale por la app de Spotify de tu celular y esta página la maneja como control remoto. Para iPhone. Solo se usan celulares: nunca parlantes ni TVs de la cuenta. Los fragmentos de menos de 1 s salen imprecisos.
           </label>
           <label><input type="radio" checked={mode === 'manual'} onChange={() => setMode('manual')} />
             Sin reproductor: <b>música manual</b>. La ponés vos por tu cuenta; la app solo cuenta el tiempo, los pulsadores y el puntaje.
@@ -181,7 +181,7 @@ function SpotifyTab({ ctx }: { ctx: HostCtx }) {
         {mode === 'connect' && (
           <div className="field row">
             <select aria-label="Dispositivo de Spotify" value={devId} onChange={(e) => setDevId(e.target.value)} className="grow">
-              {devs.length === 0 && <option value="">Abrí Spotify en algún dispositivo…</option>}
+              {devs.length === 0 && <option value="">Abrí Spotify en tu iPhone y tocá Actualizar…</option>}
               {devs.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.type}){d.is_active ? ' · activo' : ''}</option>)}
             </select>
             <button className="btn sm" onClick={refreshDevices}>Actualizar</button>

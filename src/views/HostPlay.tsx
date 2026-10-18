@@ -8,7 +8,7 @@ import { usePress } from '../components/press';
 import { JoinRequests, RoomChanged } from '../components/JoinRequests';
 import { ConnectPlayer, ManualPlayer, SdkPlayer, sdkSupported } from '../spotify/player';
 import { loadConnectDevice, loadPlayerMode, loadPreferredDevice, saveConnectDevice, savePlayerMode, type PlayerModeSetting } from '../storage/store';
-import { devices, type Device } from '../spotify/api';
+import { phoneDevices, type Device } from '../spotify/api';
 import { secs, mmss } from '../util/format';
 import { navigate } from '../router';
 
@@ -379,7 +379,7 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
   const [devId, setDevId] = useState<string>(() => player?.deviceId ?? loadConnectDevice() ?? '');
   const loadDevs = async () => {
     try {
-      const ds = await devices();
+      const ds = await phoneDevices();
       setDevs(ds);
       setDevId((cur) => (ds.some((d) => d.id === cur) ? cur : player?.deviceId ?? ds.find((d) => d.name === loadPreferredDevice().name)?.id ?? ds.find((d) => d.is_active)?.id ?? ds[0]?.id ?? ''));
     } catch (e) { setErr((e as Error).message); }
@@ -423,8 +423,8 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
       {mode === 'connect' && ctx.loggedIn && (
         <>
           <div className="row mt">
-            <select aria-label="Aparato de Spotify" value={devId} onChange={(e) => setDevId(e.target.value)} className="grow">
-              {devs.length === 0 && <option value="">Abrí Spotify en algún aparato y tocá Buscar</option>}
+            <select aria-label="Celular de Spotify" value={devId} onChange={(e) => setDevId(e.target.value)} className="grow">
+              {devs.length === 0 && <option value="">Abrí Spotify en tu iPhone y tocá Buscar</option>}
               {devs.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.type}){d.is_active ? ' · activo' : ''}</option>)}
             </select>
             <button className="btn sm" onClick={() => void loadDevs()}>Buscar</button>

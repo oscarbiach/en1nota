@@ -63,9 +63,9 @@ Dónde suena la música:
 - **En este navegador** (Web Playback SDK): notebook con Chrome / Edge / Firefox
   o Android con Chrome. Es el modo preciso: la pausa es local, así que un
   fragmento de 400 ms dura 400 ms.
-- **Spotify Connect**: la app manda play / pause a la app de Spotify de otro
-  dispositivo (el iPhone del juez, un parlante). Es la única opción en iPhone /
-  iPad. Cada comando viaja por internet, así que fragmentos de menos de ~1 s
+- **Spotify Connect**: la app manda play / pause a la app de Spotify de un
+  celular (el iPhone del juez). Por decisión del dueño solo se usan celulares:
+  parlantes, compus y TVs de la cuenta no se listan. Es la única opción en iPhone. Cada comando viaja por internet, así que fragmentos de menos de ~1 s
   quedan imprecisos: conviene empezar en 1 s.
 - **Sin reproductor**: el juez pone la música por su cuenta y la app solo lleva
   tiempo, pulsadores y puntaje. Respaldo si Spotify falla.

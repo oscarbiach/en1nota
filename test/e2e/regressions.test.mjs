@@ -539,7 +539,7 @@ test('B04: con el almacenamiento lleno se avisa y se puede descargar un respaldo
 // ---------- Pedidos del dueño ----------
 
 /** Juez con Spotify Connect simulado: las llamadas a api.spotify.com se registran y responden acá. */
-async function judgeWithFakeSpotify({ hang, asleep = false, devices = [{ id: 'fake', name: 'Parlante', type: 'Speaker', is_active: true }] } = {}) {
+async function judgeWithFakeSpotify({ hang, asleep = false, devices = [{ id: 'fake', name: 'iPhone de prueba', type: 'Smartphone', is_active: true }] } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
   const calls = [];
   let playing; // lo último que se mandó a sonar, para contestar "qué está sonando"
@@ -661,17 +661,19 @@ test('con la app ya instalada (service worker activo), /healthz sigue mostrando 
   await ctx.close();
 });
 
-test('Spotify Connect: suena en el aparato que elige el juez, no en el parlante activo, y lo recuerda al recargar', async () => {
+test('Spotify Connect: solo celulares, suena en el que elige el juez y lo recuerda al recargar', async () => {
   const devices = [
     { id: 'echo', name: 'Echo Pop de Oscar', type: 'Speaker', is_active: true },
+    { id: 'juan', name: 'iPhone de Juan', type: 'Smartphone', is_active: true },
     { id: 'iphone', name: 'iPhone de Oscar', type: 'Smartphone', is_active: false }
   ];
   const { ctx, page, calls } = await judgeWithFakeSpotify({ devices });
   await addTablePlayers(page, ['Ana']);
   await addTracks(page, ['Tema Uno', 'Tema Dos']);
   await start(page);
-  const picker = page.getByLabel('Aparato de Spotify');
-  await until(async () => (await picker.locator('option').count()) === 2, 'lista los aparatos');
+  const picker = page.getByLabel('Celular de Spotify');
+  await until(async () => (await picker.locator('option').count()) === 2, 'lista los celulares');
+  assert.deepEqual(await picker.locator('option').allTextContents(), ['iPhone de Juan (Smartphone) · activo', 'iPhone de Oscar (Smartphone)'], 'el Echo ni aparece');
   await picker.selectOption('iphone');
   await page.getByRole('button', { name: 'Usar este aparato' }).click();
   await page.getByText('Suena en: iPhone de Oscar').first().waitFor();

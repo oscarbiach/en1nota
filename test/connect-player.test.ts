@@ -12,6 +12,7 @@ mem.set('en1nota.spotify.token', JSON.stringify({ accessToken: 'FICTICIO', expir
 
 const echo = { id: 'echo', name: 'Echo Pop de Oscar', type: 'Speaker', is_active: true };
 const phone = { id: 'iphone', name: 'iPhone de Oscar', type: 'Smartphone', is_active: false };
+const juan = { id: 'juan', name: 'iPhone de Juan', type: 'Smartphone', is_active: true };
 let list = [echo, phone];
 let missing = new Set<string>();
 const plays: string[] = [];
@@ -58,14 +59,21 @@ beforeEach(() => {
   mock.timers.enable({ apis: ['setTimeout'] });
 });
 
-test('sin elección guardada usa el aparato activo y dice cuál es', async () => {
+test('sin elección guardada usa el celular aunque Spotify tenga activo el Echo, y dice cuál es', async () => {
   const p = new ConnectPlayer();
   await p.init();
-  assert.equal(p.deviceId, 'echo');
-  assert.equal(p.deviceName, 'Echo Pop de Oscar');
+  assert.equal(p.deviceId, 'iphone');
+  assert.equal(p.deviceName, 'iPhone de Oscar');
+});
+
+test('nunca suena en parlantes: con solo el Echo disponible, pide abrir Spotify en el iPhone', async () => {
+  list = [echo];
+  await assert.rejects(new ConnectPlayer().init(), /ningún celular.*iPhone/);
+  assert.deepEqual(await new ConnectPlayer().listDevices(), []);
 });
 
 test('con el aparato elegido guardado, suena ahí aunque Spotify tenga otro activo', async () => {
+  list = [echo, juan, phone];
   const p = new ConnectPlayer(undefined, { id: 'iphone', name: 'iPhone de Oscar' });
   await p.init();
   await p.play('spotify:track:x', 0);
@@ -73,7 +81,7 @@ test('con el aparato elegido guardado, suena ahí aunque Spotify tenga otro acti
 });
 
 test('si el aparato elegido cambió de id, lo reconoce por el nombre', async () => {
-  list = [echo, { ...phone, id: 'iphone-nuevo' }];
+  list = [echo, juan, { ...phone, id: 'iphone-nuevo' }];
   const p = new ConnectPlayer(undefined, { id: 'iphone', name: 'iPhone de Oscar' });
   await p.init();
   assert.equal(p.deviceId, 'iphone-nuevo');
@@ -83,7 +91,7 @@ test('si Spotify pierde el aparato en plena partida, vuelve al mismo (por nombre
   const p = new ConnectPlayer(phone);
   await p.init();
   missing.add('iphone');
-  list = [echo, { ...phone, id: 'iphone-2' }];
+  list = [echo, juan, { ...phone, id: 'iphone-2' }];
   await p.play('spotify:track:x', 0);
   assert.deepEqual(plays, ['iphone-2']);
 });

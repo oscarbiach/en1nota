@@ -250,6 +250,15 @@ export async function devices(): Promise<Device[]> {
   return j.devices;
 }
 
+/**
+ * Decisión del dueño (2026-10-18): por Spotify Connect la música suena solo en
+ * celulares, nunca en parlantes, compus ni TVs de la cuenta (sonaba en un Echo
+ * Pop de la casa). Los parlantes ni se listan.
+ */
+export async function phoneDevices(): Promise<Device[]> {
+  return (await devices()).filter((d) => d.type === 'Smartphone');
+}
+
 export interface PlaybackState {
   isPlaying: boolean;
   progressMs: number;
