@@ -31,7 +31,7 @@
 - Tararear la canción correcta cuenta como Correcto: no hay opción de tarareo.
 - Spotify se usa en privado entre amigos con la cuenta del juez; no se pide a cada usuario crear un Client ID.
 - No quitar funciones ni cambiar de proveedor de música sin decisión del dueño.
-- Spotify Connect manda la música solo a celulares (`phoneDevices`): nunca a parlantes, compus ni TVs de la cuenta (2026-10-18).
+- Spotify Connect lista celulares y parlantes/TVs con Spotify (`connectDevices`), pero un parlante sólo suena si el juez lo elige a mano: la app nunca lo elige sola, ni al recargar ni tras un «Device not found» (2026-10-18).
 
 ## Reglas del juego en el código
 - Las acciones del juez y los toques de los jugadores se aplican una sola vez: el motor (`src/game/engine.ts`) ignora una acción si la fase de la ronda ya cambió, y el servidor ordena los toques por hora de llegada. Al tocar esos flujos, verificá que se mantenga con un doble toque en la prueba.

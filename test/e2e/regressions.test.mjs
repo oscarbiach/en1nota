@@ -661,7 +661,7 @@ test('con la app ya instalada (service worker activo), /healthz sigue mostrando 
   await ctx.close();
 });
 
-test('Spotify Connect: solo celulares, suena en el que elige el juez y lo recuerda al recargar', async () => {
+test('Spotify Connect: el parlante aparece pero no se elige solo; suena en el que elige el juez y lo recuerda', async () => {
   const devices = [
     { id: 'echo', name: 'Echo Pop de Oscar', type: 'Speaker', is_active: true },
     { id: 'juan', name: 'iPhone de Juan', type: 'Smartphone', is_active: true },
@@ -671,9 +671,10 @@ test('Spotify Connect: solo celulares, suena en el que elige el juez y lo recuer
   await addTablePlayers(page, ['Ana']);
   await addTracks(page, ['Tema Uno', 'Tema Dos']);
   await start(page);
-  const picker = page.getByLabel('Celular de Spotify');
-  await until(async () => (await picker.locator('option').count()) === 2, 'lista los celulares');
-  assert.deepEqual(await picker.locator('option').allTextContents(), ['iPhone de Juan (Smartphone) · activo', 'iPhone de Oscar (Smartphone)'], 'el Echo ni aparece');
+  const picker = page.getByLabel('Aparato de Spotify');
+  await until(async () => (await picker.locator('option').count()) === 3, 'lista celulares y el parlante');
+  assert.deepEqual(await picker.locator('option').allTextContents(), ['Echo Pop de Oscar (parlante) · activo', 'iPhone de Juan · activo', 'iPhone de Oscar']);
+  assert.notEqual(await picker.inputValue(), 'echo', 'aunque esté activo, el Echo no queda elegido solo');
   await picker.selectOption('iphone');
   await page.getByRole('button', { name: 'Usar este aparato' }).click();
   await page.getByText('Suena en: iPhone de Oscar').first().waitFor();
@@ -837,5 +838,25 @@ test('iPhone que tenía guardado «Suena en este navegador»: entra directo en V
   await sonar(page).click();
   await until(async () => (await page.evaluate(() => window.__media)).includes('muestra'), 'suena la muestra', 5000);
   assert.equal(await page.evaluate(() => window.__activations), 0, 'ni siquiera intentó el reproductor web de Spotify');
+  await ctx.close();
+});
+
+test('Spotify Connect: el Echo elegido a mano recibe la canción', async () => {
+  const devices = [
+    { id: 'echo', name: 'Echo Pop de Oscar', type: 'Speaker', is_active: false },
+    { id: 'iphone', name: 'iPhone de Oscar', type: 'Smartphone', is_active: true }
+  ];
+  const { ctx, page, calls } = await judgeWithFakeSpotify({ devices });
+  await addTablePlayers(page, ['Ana']);
+  await addTracks(page, ['Tema Uno']);
+  await start(page);
+  const picker = page.getByLabel('Aparato de Spotify');
+  await until(async () => (await picker.locator('option').count()) === 2, 'lista los aparatos');
+  await picker.selectOption('echo');
+  await page.getByRole('button', { name: 'Usar este aparato' }).click();
+  await page.getByText('Suena en: Echo Pop de Oscar').first().waitFor();
+  await sonar(page).click();
+  await until(() => calls.some((c) => c.path === '/me/player/play'), 'mandó a reproducir');
+  assert.deepEqual([...new Set(calls.filter((c) => c.path === '/me/player/play').map((c) => c.device))], ['echo']);
   await ctx.close();
 });

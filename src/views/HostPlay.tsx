@@ -8,7 +8,7 @@ import { usePress } from '../components/press';
 import { JoinRequests, RoomChanged } from '../components/JoinRequests';
 import { ConnectPlayer, ManualPlayer, PreviewPlayer, SdkPlayer, isIOS, resolvePlayerMode, sdkSupported } from '../spotify/player';
 import { loadConnectDevice, loadPlayerMode, loadPreferredDevice, saveConnectDevice, savePlayerMode, type PlayerModeSetting } from '../storage/store';
-import { phoneDevices, type Device } from '../spotify/api';
+import { connectDevices, deviceLabel, isPhone, type Device } from '../spotify/api';
 import { secs, mmss } from '../util/format';
 import { navigate } from '../router';
 
@@ -380,9 +380,13 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
   const [devId, setDevId] = useState<string>(() => player?.deviceId ?? loadConnectDevice() ?? '');
   const loadDevs = async () => {
     try {
-      const ds = await phoneDevices();
+      const ds = await connectDevices();
       setDevs(ds);
-      setDevId((cur) => (ds.some((d) => d.id === cur) ? cur : player?.deviceId ?? ds.find((d) => d.name === loadPreferredDevice().name)?.id ?? ds.find((d) => d.is_active)?.id ?? ds[0]?.id ?? ''));
+      // Primero el que ya suena o el elegido antes; si no, un celular. Un parlante nunca queda elegido solo.
+      const phones = ds.filter(isPhone);
+      setDevId((cur) => (ds.some((d) => d.id === cur) ? cur
+        : ds.find((d) => d.id === player?.deviceId)?.id ?? ds.find((d) => d.name === loadPreferredDevice().name)?.id
+          ?? phones.find((d) => d.is_active)?.id ?? phones[0]?.id ?? ''));
     } catch (e) { setErr((e as Error).message); }
   };
   useEffect(() => { if (mode === 'connect' && ctx.loggedIn) void loadDevs(); }, [mode, ctx.loggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -425,14 +429,14 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
       {mode === 'connect' && ctx.loggedIn && (
         <>
           <div className="row mt">
-            <select aria-label="Celular de Spotify" value={devId} onChange={(e) => setDevId(e.target.value)} className="grow">
-              {devs.length === 0 && <option value="">Abrí Spotify en tu iPhone y tocá Buscar</option>}
-              {devs.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.type}){d.is_active ? ' · activo' : ''}</option>)}
+            <select aria-label="Aparato de Spotify" value={devId} onChange={(e) => setDevId(e.target.value)} className="grow">
+              {devs.length === 0 && <option value="">Abrí Spotify en tu iPhone o en un parlante y tocá Buscar</option>}
+              {devs.map((d) => <option key={d.id} value={d.id}>{deviceLabel(d)}{d.is_active ? ' · activo' : ''}</option>)}
             </select>
             <button className="btn sm" onClick={() => void loadDevs()}>Buscar</button>
           </div>
           {isIOS() && <p className="muted small mt">En iPhone los efectos de sonido del juego quedan apagados: si sonaran, el iPhone le cortaría la música a Spotify.</p>}
-          <p className="muted small mt">Para que suene en este celular: abrí la app de Spotify acá, poné play en cualquier tema, volvé a esta página, tocá Buscar, elegí el celular y tocá «Usar este aparato».</p>
+          <p className="muted small mt">Para canciones completas: prendé el parlante o TV con Spotify (Echo, Nest, Sonos) u otro celular con Spotify abierto, tocá Buscar, elegilo y tocá «Usar este aparato». En este mismo iPhone Spotify Connect no suena: para eso está Vista previa.</p>
         </>
       )}
       {mode !== 'manual' && mode !== 'preview' && !ctx.loggedIn && <div className="error small mt">Sin sesión de Spotify. Terminá la partida y conectala en el lobby, o usá música manual.</div>}

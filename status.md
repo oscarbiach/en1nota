@@ -11,7 +11,7 @@
 - Spotify Connect confirma que el aparato suena antes de contar el fragmento; si no arranca (iPhone con Spotify dormido en segundo plano) avisa qué hacer. Sin verificar en un iPhone real.
 - Connect: si Spotify contesta «Device not found» con el celular listado y activo, reintenta sin device_id (al aparato activo); un 404 que no es del aparato muestra el mensaje real de Spotify. Sin verificar en iPhone real.
 - iPhone + Spotify Connect: la página no abre audio propio (efectos apagados); si sonara, iOS le corta la música a la app de Spotify y en segundo plano no vuelve. Hipótesis del caso «el tema se corta al tocar Sonar y no suena nada»; sin verificar en un iPhone real.
-- Spotify Connect solo usa celulares (decisión del dueño): parlantes como el Echo Pop ya no se listan ni se eligen.
+- Spotify Connect vuelve a listar parlantes/TVs con Spotify (decisión del dueño, misma fecha): sólo suenan si el juez los elige; la app nunca los elige sola. Juez en iPhone + música en el Echo = canciones completas sin compu (sin probar con el Echo real todavía).
 - La lista se mezcla al empezar cada partida (opción en Reglas, activada de entrada).
 - Hay controles y reglas para agentes en `.claude/` (hooks, subagentes Explore y sonnet-coder, skills `pruebas-app` y `publicar`), `AGENTS.md` y `CLAUDE.md`.
 

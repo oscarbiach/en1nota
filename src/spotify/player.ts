@@ -9,7 +9,7 @@
 // Todos cumplen el contrato de run.ts: cada operación termina siempre, y una
 // nueva (o stop) cancela la anterior.
 import { getAccessToken } from './auth.ts';
-import { SpotifyError, phoneDevices, pauseRemote, playUri, playbackState, transferTo, type Device, type PlaybackState } from './api.ts';
+import { SpotifyError, connectDevices, isPhone, pauseRemote, playUri, playbackState, transferTo, type Device, type PlaybackState } from './api.ts';
 import { Cancelled, Runner, runSnippet, type Op } from './run.ts';
 
 export { ManualPlayer } from './manual.ts';
@@ -284,9 +284,11 @@ export interface PreferredDevice { id?: string | null; name?: string | null }
  * parlante de la casa) en vez del celular del juez.
  */
 export function pickDevice(ds: Device[], preferred?: PreferredDevice): Device | undefined {
+  const phones = ds.filter(isPhone);
+  // El elegido a mano puede ser un parlante; lo automático, sólo celulares.
   return (preferred?.id ? ds.find((x) => x.id === preferred.id) : undefined)
     ?? (preferred?.name ? ds.find((x) => x.name === preferred.name) : undefined)
-    ?? ds.find((x) => x.is_active) ?? ds[0];
+    ?? phones.find((x) => x.is_active) ?? phones[0];
 }
 
 export class ConnectPlayer implements SnippetPlayer {
@@ -312,7 +314,7 @@ export class ConnectPlayer implements SnippetPlayer {
   }
 
   async listDevices() {
-    return phoneDevices();
+    return connectDevices();
   }
 
   setDevice(d: Device) {
@@ -322,8 +324,8 @@ export class ConnectPlayer implements SnippetPlayer {
 
   async init() {
     if (!this.deviceId) {
-      const d = pickDevice(await phoneDevices(), this.preferred);
-      if (!d) throw new Error('Spotify no ve ningún celular. Abrí la app de Spotify en tu iPhone, poné play un segundo y volvé a intentar.');
+      const d = pickDevice(await connectDevices(), this.preferred);
+      if (!d) throw new Error('Spotify no ve ningún celular. Abrí la app de Spotify en tu iPhone, poné play un segundo y volvé a intentar, o elegí un parlante en «Reproductor y conexión».');
       this.setDevice(d);
     }
     this.ready = true;
@@ -350,7 +352,7 @@ export class ConnectPlayer implements SnippetPlayer {
       if (!isDeviceNotFound(e)) fail(e);
       first = e;
     }
-    const ds = await op.wait(phoneDevices());
+    const ds = await op.wait(connectDevices());
     // El mismo celular con otro id (Spotify a veces lo cambia).
     const name = this.device?.name ?? this.preferred?.name;
     const renamed = name ? ds.find((x) => x.id !== this.deviceId && x.name === name) : undefined;
@@ -362,7 +364,8 @@ export class ConnectPlayer implements SnippetPlayer {
     // Caso real (iPhone, 2026-10-18): el celular está listado y activo pero
     // Spotify no lo encuentra por su id. Sin device_id, la orden va al aparato
     // activo de la cuenta, que es ese mismo celular.
-    const active = ds.find((x) => x.is_active);
+    // Sólo si el activo es un celular o el mismo aparato elegido: nunca saltar solo a un parlante.
+    const active = ds.find((x) => x.is_active && (isPhone(x) || x.name === name));
     if (active) {
       this.setDevice(active);
       this.onStatus?.(`Suena en: ${active.name}`);

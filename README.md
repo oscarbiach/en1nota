@@ -70,9 +70,11 @@ Dónde suena la música:
   El servidor saca el enlace de la página pública de cada canción
   (`/api/spotify/preview/:id`), que no es una vía oficial. El fragmento arranca
   donde arranca la muestra y algunos temas no tienen. No necesita sesión.
-- **Spotify Connect**: la app manda play / pause a la app de Spotify de un
-  celular (el iPhone del juez). Por decisión del dueño solo se usan celulares:
-  parlantes, compus y TVs de la cuenta no se listan. Es la única opción en iPhone. Cada comando viaja por internet, así que fragmentos de menos de ~1 s
+- **Spotify Connect**: la app manda play / pause a otro aparato con Spotify:
+  un parlante o TV (Echo, Nest, Sonos, Chromecast) u otro celular. Canción
+  completa desde el principio. Un parlante sólo suena si el juez lo elige a mano;
+  la app nunca lo elige sola. En el mismo iPhone donde está abierto el juego no
+  suena (la app de Spotify queda en segundo plano). Cada comando viaja por internet, así que fragmentos de menos de ~1 s
   quedan imprecisos: conviene empezar en 1 s.
 - **Sin reproductor**: el juez pone la música por su cuenta y la app solo lleva
   tiempo, pulsadores y puntaje. Respaldo si Spotify falla.

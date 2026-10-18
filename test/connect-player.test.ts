@@ -69,10 +69,29 @@ test('sin elección guardada usa el celular aunque Spotify tenga activo el Echo,
   assert.equal(p.deviceName, 'iPhone de Oscar');
 });
 
-test('nunca suena en parlantes: con solo el Echo disponible, pide abrir Spotify en el iPhone', async () => {
+test('un parlante nunca se elige solo: con solo el Echo, pide abrir Spotify en el iPhone o elegirlo a mano', async () => {
   list = [echo];
-  await assert.rejects(new ConnectPlayer().init(), /ningún celular.*iPhone/);
-  assert.deepEqual(await new ConnectPlayer().listDevices(), []);
+  await assert.rejects(new ConnectPlayer().init(), /ningún celular.*elegí un parlante/);
+  assert.deepEqual((await new ConnectPlayer().listDevices()).map((d) => d.id), ['echo'], 'pero aparece en la lista para elegirlo');
+});
+
+test('el Echo elegido a mano suena, y al recargar se recuerda', async () => {
+  const p = new ConnectPlayer(echo);
+  await p.init();
+  await p.play('spotify:track:x', 0);
+  const again = new ConnectPlayer(undefined, { id: 'echo', name: 'Echo Pop de Oscar' });
+  await again.init();
+  await again.play('spotify:track:x', 0);
+  assert.deepEqual(plays, ['echo', 'echo']);
+});
+
+test('si Spotify pierde el celular elegido y el Echo está activo, no salta al Echo', async () => {
+  list = [echo, phone];
+  missing.add('iphone');
+  const p = new ConnectPlayer(phone);
+  await p.init();
+  await assert.rejects(p.play('spotify:track:x', 0), /no encuentra tu celular/);
+  assert.deepEqual(plays, [], 'no sonó en el Echo');
 });
 
 test('con el aparato elegido guardado, suena ahí aunque Spotify tenga otro activo', async () => {

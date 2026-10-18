@@ -250,13 +250,23 @@ export async function devices(): Promise<Device[]> {
   return j.devices;
 }
 
+const SPEAKER_TYPES = new Set(['Speaker', 'TV', 'AVR', 'STB', 'AudioDongle', 'CastAudio', 'CastVideo']);
+export const isPhone = (d: Device) => d.type === 'Smartphone';
+/** Parlantes y TVs con Spotify (Echo, Nest, Sonos, Chromecast, Smart TV). */
+export const isSpeaker = (d: Device) => SPEAKER_TYPES.has(d.type);
+
 /**
- * Decisión del dueño (2026-10-18): por Spotify Connect la música suena solo en
- * celulares, nunca en parlantes, compus ni TVs de la cuenta (sonaba en un Echo
- * Pop de la casa). Los parlantes ni se listan.
+ * Decisión del dueño (2026-10-18, revisada el mismo día): por Spotify Connect
+ * se listan celulares y parlantes/TVs con Spotify, pero un parlante sólo suena
+ * si el juez lo elige a mano; la app nunca lo elige sola (antes mandaba la
+ * música al Echo Pop de la casa por ser el aparato activo). Compus y otros no.
  */
-export async function phoneDevices(): Promise<Device[]> {
-  return (await devices()).filter((d) => d.type === 'Smartphone');
+export async function connectDevices(): Promise<Device[]> {
+  return (await devices()).filter((d) => isPhone(d) || isSpeaker(d));
+}
+
+export function deviceLabel(d: Device): string {
+  return d.name + (isSpeaker(d) ? (d.type === 'TV' ? ' (TV)' : ' (parlante)') : '');
 }
 
 export interface PlaybackState {
