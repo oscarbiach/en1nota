@@ -4,7 +4,7 @@ import type { Settings, Track } from '../game/types';
 import * as E from '../game/engine';
 import { beginLogin, getClientId, logout, redirectUri, setClientId } from '../spotify/auth';
 import { getMe, phoneDevices, type Device, type Me } from '../spotify/api';
-import { ConnectPlayer, ManualPlayer, PreviewPlayer, SdkPlayer, defaultPlayerMode, isIOS, sdkSupported } from '../spotify/player';
+import { ConnectPlayer, ManualPlayer, PreviewPlayer, SdkPlayer, isIOS, resolvePlayerMode, sdkSupported } from '../spotify/player';
 import { saveConnectDevice, loadConnectDevice, loadPlayerMode, savePlayerMode, saveSettings, type PlayerModeSetting } from '../storage/store';
 import { PlaylistEditor } from './PlaylistEditor';
 import { RoomQr } from '../components/RoomQr';
@@ -24,19 +24,7 @@ export function HostSetup({ ctx, setTracks, authError }: { ctx: HostCtx; setTrac
     setStartErr(undefined); setStarting(true);
     try {
       // El reproductor necesita un gesto del usuario: este click sirve.
-      if (ctx.player && !ctx.player.ready) {
-        try {
-          await ctx.player.init();
-        } catch (e) {
-          // iPhone: si Spotify no deja sonar la canción completa, se juega con
-          // Vista previa (se habilita con el primer Sonar, que es otro toque).
-          if (ctx.player.mode !== 'sdk' || !isIOS()) throw e;
-          const v = new PreviewPlayer();
-          v.onStatus = ctx.setPlayerStatus;
-          ctx.setPlayer(v);
-          ctx.setPlayerStatus(`En este iPhone Spotify no dejó sonar la canción completa (${(e as Error).message}). Se usa «Vista previa» (30 s de muestra).`);
-        }
-      }
+      if (ctx.player && !ctx.player.ready) await ctx.player.init();
       ctx.sfx('start');
       update(E.startGame);
     } catch (e) {
@@ -103,7 +91,7 @@ function SpotifyTab({ ctx }: { ctx: HostCtx }) {
   const [clientId, setCid] = useState(getClientId());
   const [me, setMe] = useState<Me | null>(null);
   const [err, setErr] = useState<string>();
-  const [mode, setMode] = useState<PlayerModeSetting>(loadPlayerMode() ?? defaultPlayerMode());
+  const [mode, setMode] = useState<PlayerModeSetting>(resolvePlayerMode(loadPlayerMode()));
   const [devs, setDevs] = useState<Device[]>([]);
   const [devId, setDevId] = useState<string>(loadConnectDevice() ?? '');
   const [busy, setBusy] = useState(false);
@@ -183,7 +171,7 @@ function SpotifyTab({ ctx }: { ctx: HostCtx }) {
         <p className="muted small">Dónde suena la música. El estado actual: <b>{ctx.playerStatus}</b></p>
         <div className="field">
           <label><input type="radio" checked={mode === 'sdk'} disabled={!sdkSupported()} onChange={() => setMode('sdk')} />
-            <b>Suena en este navegador</b>: la música sale por este aparato (la compu o el celu del juez, o el parlante conectado a él). {isIOS() ? 'En iPhone: canción completa si Spotify lo permite en este celular; si no, la app pasa sola a Vista previa.' : sdkSupported() ? 'Recomendado: los fragmentos cortos son exactos.' : 'No disponible en este navegador.'}
+            <b>Suena en este navegador</b>: la música sale por este aparato (la compu o el celu del juez, o el parlante conectado a él). {sdkSupported() ? 'Recomendado: los fragmentos cortos son exactos.' : isIOS() ? 'No disponible en iPhone: Spotify no acepta este reproductor en Safari (probado). En iPhone usá Vista previa, o jugá desde una compu para canciones completas.' : 'No disponible en este navegador.'}
           </label>
           <label><input type="radio" checked={mode === 'preview'} onChange={() => setMode('preview')} />
             <b>Vista previa en este aparato</b>: suenan los 30 s de muestra que Spotify publica de cada tema, dentro de esta página. {isIOS() ? 'Recomendado en iPhone.' : 'Sirve en cualquier celular.'} El fragmento arranca donde arranca la muestra (no en el punto de inicio de la lista) y algunos temas no tienen muestra.

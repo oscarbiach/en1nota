@@ -1,7 +1,7 @@
 # Estado
 
 ## Ahora
-- iPhone: «Suena en este celular» (Web Playback SDK, canción completa) habilitado y por defecto; activateElement dentro del toque, SDK precargado, reanuda si llega en pausa; si falla al empezar o no suena, pasa solo a «Vista previa». Sin verificar en un iPhone real.
+- iPhone: el Web Playback SDK se probó en el iPhone real del dueño y no anda (se conecta y Spotify responde «Device not found»). En iPhone se vuelve a usar «Vista previa» por defecto; un «Suena en este navegador» guardado en iPhone se toma como Vista previa. Canciones completas: compu, o música desde otro aparato.
 - Reproductor «Vista previa» (por defecto en iPhone): 30 s de muestra de cada tema dentro de la página, corte exacto, sin sesión. Reemplaza a Spotify Connect hacia el mismo iPhone, que no arrancaba. Sin verificar en un iPhone real ni contra la página real de Spotify.
 - El juego está completo y publicado en Render desde `claude/music-recognition-game-5vz0p8` (último cambio de la app: `09a9694`).
 - Codex sumó el 2026-10-13 cola de turnos, modos Solitario y 1 contra 1, y el diseño nuevo (`8e76dc6`, detalle y respaldo en `docs/CAMBIOS-2026-10-13.md`).

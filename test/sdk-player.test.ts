@@ -194,19 +194,3 @@ test('iPhone: el sonido se habilita dentro del toque (antes de cualquier espera)
   await flush();
   assert.equal(s.value, 'done');
 });
-
-test('iPhone: si Spotify no confirma que suena, avisa en vez de contar el fragmento en silencio', async () => {
-  const nav = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
-  Object.defineProperty(globalThis, 'navigator', { value: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', platform: 'iPhone', maxTouchPoints: 5 }, configurable: true });
-  try {
-    const { p, pauses } = ready();
-    const s = track(p.playSnippet('spotify:track:x', 0, 400));
-    await flush();
-    mock.timers.tick(2500);
-    await flush();
-    assert.match(String((s.error as Error)?.message), /no llegó a sonar en este iPhone/);
-    assert.ok(pauses() >= 1, 'por las dudas, se pausa');
-  } finally {
-    if (nav) Object.defineProperty(globalThis, 'navigator', nav); else delete (globalThis as Record<string, unknown>).navigator;
-  }
-});

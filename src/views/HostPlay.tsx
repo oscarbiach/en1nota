@@ -6,7 +6,7 @@ import { TurnQueue } from '../components/TurnQueue';
 import { SoundWave } from '../components/SoundWave';
 import { usePress } from '../components/press';
 import { JoinRequests, RoomChanged } from '../components/JoinRequests';
-import { ConnectPlayer, ManualPlayer, PreviewPlayer, SdkPlayer, defaultPlayerMode, isIOS, sdkSupported } from '../spotify/player';
+import { ConnectPlayer, ManualPlayer, PreviewPlayer, SdkPlayer, isIOS, resolvePlayerMode, sdkSupported } from '../spotify/player';
 import { loadConnectDevice, loadPlayerMode, loadPreferredDevice, saveConnectDevice, savePlayerMode, type PlayerModeSetting } from '../storage/store';
 import { phoneDevices, type Device } from '../spotify/api';
 import { secs, mmss } from '../util/format';
@@ -45,32 +45,17 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
     try { await fn(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); busyRef.current = false; }
   };
 
-  /**
-   * iPhone: si Spotify no deja sonar la canción completa en el navegador, el
-   * juego no queda mudo: pasa solo a Vista previa (para esta sesión; la
-   * próxima vez vuelve a intentar la canción completa).
-   */
-  const fallBackToPreview = (e: unknown): never => {
-    if (player?.mode === 'sdk' && isIOS()) {
-      const v = new PreviewPlayer();
-      v.onStatus = ctx.setPlayerStatus;
-      ctx.setPlayer(v);
-      throw new Error(`En este iPhone Spotify no dejó sonar la canción completa (${(e as Error).message}). Pasé a «Vista previa» (30 s de muestra): tocá Sonar de nuevo.`);
-    }
-    throw e;
-  };
-
   const play = () => {
     if (busyRef.current || gameRef.current.round.pending.length) return; // la tecla espacio no pasa por el botón deshabilitado
     return guard(async () => {
       if (!player) throw new Error('No hay reproductor configurado. Elegí uno en el panel "Reproductor" de la derecha.');
-      if (!player.ready) await player.init().catch(fallBackToPreview);
+      if (!player.ready) await player.init();
       // Misma base temporal que las pulsaciones (B03). Mide desde la orden de
       // reproducir, no desde que el audio se oye.
       const at = ctx.now();
       update((g) => E.markPlaying(g, at));
       try {
-        await player.playSnippet(track.uri, track.startMs, len).catch(fallBackToPreview);
+        await player.playSnippet(track.uri, track.startMs, len);
       } finally {
         // Terminó, se canceló o falló: esta pasada deja de "sonar" y se puede
         // repetir. Si ya arrancó otra (o alguien tocó), no la tocamos.
@@ -388,7 +373,7 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
   // `mode` es la selección pendiente; el modo activo es siempre `player.mode`.
   // Al recargar, el reproductor real llega después del primer render: cuando
   // llega (o cambia), la selección se alinea con él.
-  const [mode, setMode] = useState<PlayerModeSetting>(() => player?.mode ?? loadPlayerMode() ?? defaultPlayerMode());
+  const [mode, setMode] = useState<PlayerModeSetting>(() => player?.mode ?? resolvePlayerMode(loadPlayerMode()));
   useEffect(() => { if (player) setMode(player.mode); }, [player]);
   // Spotify Connect: en qué aparato suena. Se elige acá mismo, sin volver al lobby.
   const [devs, setDevs] = useState<Device[]>([]);
@@ -428,7 +413,7 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
       </div>
       <div className="row">
         <select aria-label="Reproductor" value={mode} onChange={(e) => setMode(e.target.value as PlayerModeSetting)} className="grow">
-          {sdkSupported() && <option value="sdk">{isIOS() ? 'Suena en este celular (canción completa)' : 'Suena en este navegador'}</option>}
+          {sdkSupported() && <option value="sdk">Suena en este navegador</option>}
           <option value="preview">Vista previa en este aparato (30 s)</option>
           <option value="connect">App de Spotify (Connect)</option>
           <option value="manual">Música manual (sin Spotify)</option>

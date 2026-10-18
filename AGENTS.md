@@ -42,7 +42,7 @@
 - `pkill -f` y `pgrep -f` matan al propio shell: guardá el PID al lanzar un proceso.
 - Las pruebas E2E eligen el modo manual con `getByLabel(/Sin reproductor/)`: ese texto de la opción se mantiene.
 - Las playlists de otras personas y las vistas previas de 30 s («Vista previa», el modo para iPhone) se leen de la página pública de Spotify (`server/spotify-embed.js`), que no es una vía oficial y puede cambiar.
-- En iPhone, Spotify Connect hacia el mismo celular no arranca (la app de Spotify en segundo plano). En iPhone se intenta «Suena en este celular» (Web Playback SDK, que Spotify lista como compatible con Safari de iOS) y, si Spotify no deja sonar, el panel pasa solo a «Vista previa».
+- iPhone solo (probado 2026-10-18): Spotify Connect hacia el mismo celular no arranca (la app de Spotify en segundo plano) y el Web Playback SDK se conecta pero Spotify contesta «Device not found» a cada orden. En iPhone el modo es «Vista previa» (30 s de muestra, no desde el principio); canciones completas solo con una compu o con la música saliendo de otro aparato.
 
 ## Relevo entre sesiones
 - Una rama por tarea y un solo agente escribiendo en ella a la vez.

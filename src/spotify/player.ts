@@ -39,7 +39,7 @@ function withTimeout<T>(p: Promise<T> | undefined, ms: number, message: string):
 }
 
 export type { PlayerMode, SnippetPlayer } from './snippet.ts';
-import type { SnippetPlayer } from './snippet.ts';
+import type { PlayerMode, SnippetPlayer } from './snippet.ts';
 
 export function isIOS(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -48,18 +48,24 @@ export function isIOS(): boolean {
 
 /**
  * Spotify lista Safari de iPhone como compatible con el Web Playback SDK,
- * con la condición de que el sonido arranque desde un toque. En iPhone se
- * intenta siempre; si Spotify no deja sonar, el panel pasa solo a Vista
- * previa (HostPlay).
+ * pero en el iPhone del dueño (2026-10-18) el reproductor se conecta y
+ * Spotify igual contesta «Device not found» a cada orden, aun tras transferir
+ * y reconectar: no lo acepta como aparato. En iPhone no se ofrece.
  */
 export function sdkSupported(): boolean {
   if (typeof window === 'undefined') return false;
-  return isIOS() || 'MediaSource' in window || 'ManagedMediaSource' in window;
+  return !isIOS() && ('MediaSource' in window || 'ManagedMediaSource' in window);
 }
 
-/** Sin elección guardada: la canción completa en este aparato. */
+/** Sin elección guardada: la canción completa en este navegador; en iPhone, la vista previa. */
 export function defaultPlayerMode(): 'sdk' | 'preview' | 'connect' {
   return sdkSupported() ? 'sdk' : isIOS() ? 'preview' : 'connect';
+}
+
+/** La elección guardada, salvo que ya no sirva en este aparato («Suena acá» guardado en un iPhone). */
+export function resolvePlayerMode<M extends PlayerMode>(saved: M | null): M | 'sdk' | 'preview' | 'connect' {
+  if (saved === 'sdk' && !sdkSupported()) return defaultPlayerMode();
+  return saved ?? defaultPlayerMode();
 }
 
 /** Carga el SDK antes del primer toque: en iPhone, cualquier espera dentro del toque hace perder el permiso de sonar. */
@@ -251,12 +257,6 @@ export class SdkPlayer implements SnippetPlayer {
       // (el audio pudo ir a otro dispositivo), contamos desde la orden: el
       // fragmento se corta igual a tiempo.
       const s = await op.wait(playing.catch((e) => (e instanceof Cancelled ? Promise.reject(e) : null)));
-      // En iPhone el audio no puede haberse ido a otro aparato: sin confirmación
-      // es que no sonó. Se avisa (y el panel pasa a Vista previa) en vez de seguir mudo.
-      if (!s && isIOS()) {
-        await this.pauseEverywhere();
-        throw new Error('Spotify no llegó a sonar en este iPhone');
-      }
       const elapsed = s ? Math.max(0, s.position - startMs) : performance.now() - sentAt;
       await op.sleep(Math.max(0, lenMs - elapsed));
       await this.pauseEverywhere();

@@ -42,7 +42,7 @@ La compilación de Render (`Dockerfile` → `npm run build`) ya incluye `tsc --n
 
 ## Prueba de fuego (mutaciones)
 
-`node .claude/scripts/mutantes.mjs` rompe a propósito 23 puntos de los flujos críticos, uno por vez, corre las pruebas unitarias y restaura cada archivo. Resultado del 2026-10-18: las 23 roturas se detectan.
+`node .claude/scripts/mutantes.mjs` rompe a propósito 22 puntos de los flujos críticos, uno por vez, corre las pruebas unitarias y restaura cada archivo. Resultado del 2026-10-18: las 22 roturas se detectan.
 
 La primera pasada encontró 4 sin detectar y se agregaron sus pruebas:
 

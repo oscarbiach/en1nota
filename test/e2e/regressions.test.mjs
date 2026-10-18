@@ -831,31 +831,11 @@ async function iphoneJudgeWithSdk(sdkWorks) {
   return { ctx, page, calls };
 }
 
-test('iPhone con «Suena en este celular»: si Spotify lo permite, suena la canción completa en la página', async () => {
-  const { ctx, page, calls } = await iphoneJudgeWithSdk(true);
-  await sonar(page).click();
-  await until(() => calls.some((c) => c.path === '/me/player/play' && c.device === 'sdk-dev'), 'manda la canción al reproductor de esta página');
-  await until(async () => (await phaseLabel(page)) !== 'Sonando…', 'el fragmento terminó', 5000);
-  assert.equal(await page.getByText(/Pasé a «Vista previa»/).count(), 0, 'no pasó a vista previa');
-  assert.ok(await page.evaluate(() => window.__activations) >= 1, 'habilitó el sonido en el toque');
-  await ctx.close();
-});
-
-test('iPhone con «Suena en este celular»: si Spotify no lo permite, pasa sola a Vista previa y sigue sonando', async () => {
-  const { ctx, page } = await iphoneJudgeWithSdk(false);
-  // Falló al empezar (el primer toque): la partida arranca igual, con Vista previa y el aviso a la vista.
-  await page.getByText(/Se usa «Vista previa»/).first().waitFor({ timeout: 10_000 });
+test('iPhone que tenía guardado «Suena en este navegador»: entra directo en Vista previa y suena, sin errores', async () => {
+  const { ctx, page } = await iphoneJudgeWithSdk(true);
+  assert.equal(await page.getByText(/Device not found|no dejó sonar/).count(), 0, 'sin el error de antes');
   await sonar(page).click();
   await until(async () => (await page.evaluate(() => window.__media)).includes('muestra'), 'suena la muestra', 5000);
-  await ctx.close();
-});
-
-test('iPhone con «Suena en este celular»: si el reproductor arranca pero el tema no suena, pasa a Vista previa', async () => {
-  const { ctx, page } = await iphoneJudgeWithSdk('mudo');
-  await sonar(page).click();
-  await page.getByText(/Pasé a «Vista previa»/).waitFor({ timeout: 10_000 });
-  await until(async () => !(await sonar(page).isDisabled()), 'se puede volver a sonar', 3000);
-  await sonar(page).click();
-  await until(async () => (await page.evaluate(() => window.__media)).includes('muestra'), 'suena la muestra', 5000);
+  assert.equal(await page.evaluate(() => window.__activations), 0, 'ni siquiera intentó el reproductor web de Spotify');
   await ctx.close();
 });
