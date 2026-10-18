@@ -1,6 +1,7 @@
 # Estado
 
 ## Ahora
+- Reproductor «Vista previa» (por defecto en iPhone): 30 s de muestra de cada tema dentro de la página, corte exacto, sin sesión. Reemplaza a Spotify Connect hacia el mismo iPhone, que no arrancaba. Sin verificar en un iPhone real ni contra la página real de Spotify.
 - El juego está completo y publicado en Render desde `claude/music-recognition-game-5vz0p8` (último cambio de la app: `09a9694`).
 - Codex sumó el 2026-10-13 cola de turnos, modos Solitario y 1 contra 1, y el diseño nuevo (`8e76dc6`, detalle y respaldo en `docs/CAMBIOS-2026-10-13.md`).
 - El panel del juez muestra abiertos otra vez Ajustes rápidos, Reproductor, Próximos y Comprobar la canción. Si Spotify deja de contestar, el panel ya no queda trabado (todo pedido tiene tope de 10 s) y Reactivar crea un reproductor nuevo (`6f6fb5c`).

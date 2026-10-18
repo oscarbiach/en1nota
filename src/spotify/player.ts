@@ -13,6 +13,7 @@ import { SpotifyError, phoneDevices, pauseRemote, playUri, playbackState, transf
 import { Cancelled, Runner, runSnippet, type Op } from './run.ts';
 
 export { ManualPlayer } from './manual.ts';
+export { PreviewPlayer } from './preview.ts';
 
 /** Cuánto esperamos la confirmación del SDK antes de contar el fragmento desde la orden. */
 const CONFIRM_MS = 2000;
@@ -47,6 +48,11 @@ export function isIOS(): boolean {
 
 export function sdkSupported(): boolean {
   return !isIOS() && typeof window !== 'undefined' && 'MediaSource' in window;
+}
+
+/** Sin elección guardada: en el navegador si se puede; en iPhone, la vista previa (Connect al mismo iPhone no arranca). */
+export function defaultPlayerMode(): 'sdk' | 'preview' | 'connect' {
+  return sdkSupported() ? 'sdk' : isIOS() ? 'preview' : 'connect';
 }
 
 let sdkLoading: Promise<void> | null = null;

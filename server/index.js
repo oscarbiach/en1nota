@@ -9,7 +9,7 @@ import crypto from 'node:crypto';
 import express from 'express';
 import { WebSocketServer } from 'ws';
 import { cleanName, cleanRoom, hostData, isId, isKey, isSecret, peerData } from './validate.js';
-import { PLAYLIST_ID, parseEmbed } from './spotify-embed.js';
+import { PLAYLIST_ID, parseEmbed, parsePreview } from './spotify-embed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
@@ -106,6 +106,38 @@ app.get('/api/spotify/playlist/:id', async (req, res) => {
     if (embedCache.size > 200) embedCache.delete(embedCache.keys().next().value);
     embedCache.set(id, { at: Date.now(), data });
     res.json(data);
+  } catch {
+    res.status(502).json({ error: 'spotify_no_respondio' });
+  }
+});
+
+// Vista previa de 30 s de una canción, para el reproductor «Vista previa»
+// (iPhone: suena dentro de la página, sin la app de Spotify). Misma página
+// embed pública; caché larga y límite propio.
+const PREVIEW_CACHE_MS = 6 * 60 * 60 * 1000;
+const previewCache = new Map();
+const previewBucket = { tokens: 120, last: Date.now() };
+app.get('/api/spotify/preview/:id', async (req, res) => {
+  const id = req.params.id;
+  if (!PLAYLIST_ID.test(id)) return res.status(400).json({ error: 'id_invalido' });
+  const hit = previewCache.get(id);
+  if (hit && Date.now() - hit.at < PREVIEW_CACHE_MS) return hit.url ? res.json({ url: hit.url }) : res.status(404).json({ error: 'sin_vista_previa' });
+  const now = Date.now();
+  previewBucket.tokens = Math.min(120, previewBucket.tokens + ((now - previewBucket.last) / 60_000) * 120);
+  previewBucket.last = now;
+  if (previewBucket.tokens < 1) return res.status(429).json({ error: 'demasiadas_consultas' });
+  previewBucket.tokens -= 1;
+  try {
+    const r = await fetch(`${EMBED_BASE}/embed/track/${id}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (En1Nota)', 'Accept-Language': 'es' },
+      signal: AbortSignal.timeout(10_000)
+    });
+    if (!r.ok) return res.status(502).json({ error: 'spotify_no_respondio', status: r.status });
+    const url = parsePreview(await r.text());
+    if (previewCache.size > 2000) previewCache.delete(previewCache.keys().next().value);
+    previewCache.set(id, { at: Date.now(), url });
+    if (!url) return res.status(404).json({ error: 'sin_vista_previa' });
+    res.json({ url });
   } catch {
     res.status(502).json({ error: 'spotify_no_respondio' });
   }

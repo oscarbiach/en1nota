@@ -12,7 +12,7 @@ Aplicación de la guía «Mapa de flujos críticos y estrategia de testing» a E
 | Sala y credenciales | colarse en una sala ajena, inundar de mensajes | `test/server-security.test.js`, `test/server-limits.test.js` |
 | Título oculto | la TV o los celulares ven la canción antes de revelar | `test/engine.test.ts` (`toPublic`), `test/e2e/flow.mjs` |
 | Persistencia (equivale a «sincronización») | perder la partida al recargar, datos rotos que bloquean la app, versión futura | `test/store.test.ts`: cuarentena, migración de partidas viejas, versiones futuras; `test/e2e/restart.test.mjs` |
-| Reproductor | el panel queda trabado si Spotify no contesta; la música va a otro aparato (un parlante de la casa); el aparato acepta la orden pero no suena (iPhone con Spotify dormido, o cortado por el audio de la página) | `test/sdk-player.test.ts`, `test/spotify-api.test.ts`, `test/connect-player.test.ts`, `test/sfx.test.ts`, E2E «Reactivar destraba el panel» y «suena en el aparato que elige el juez» |
+| Reproductor | el panel queda trabado si Spotify no contesta; la música va a otro aparato (un parlante de la casa); el aparato acepta la orden pero no suena (iPhone con Spotify dormido, o cortado por el audio de la página) | `test/sdk-player.test.ts`, `test/spotify-api.test.ts`, `test/connect-player.test.ts`, `test/sfx.test.ts`, `test/preview-player.test.ts`, E2E «Reactivar destraba el panel» y «suena en el aparato que elige el juez» |
 | Partida de punta a punta (equivale a «checkout») | juez, celulares y TV no coinciden | `test/e2e/*.test.mjs` y `flow.mjs`, con Spotify simulado y navegador sin internet |
 
 ## Datos que entran desde afuera
@@ -42,7 +42,7 @@ La compilación de Render (`Dockerfile` → `npm run build`) ya incluye `tsc --n
 
 ## Prueba de fuego (mutaciones)
 
-`node .claude/scripts/mutantes.mjs` rompe a propósito 20 puntos de los flujos críticos, uno por vez, corre las pruebas unitarias y restaura cada archivo. Resultado del 2026-10-18: las 20 roturas se detectan.
+`node .claude/scripts/mutantes.mjs` rompe a propósito 21 puntos de los flujos críticos, uno por vez, corre las pruebas unitarias y restaura cada archivo. Resultado del 2026-10-18: las 21 roturas se detectan.
 
 La primera pasada encontró 4 sin detectar y se agregaron sus pruebas:
 

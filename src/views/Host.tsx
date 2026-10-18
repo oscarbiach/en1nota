@@ -4,7 +4,7 @@ import type { GameState, Track } from '../game/types';
 import * as E from '../game/engine';
 import { HostConnection } from '../net/host';
 import type { PeerInfo, SfxName } from '../net/protocol';
-import { ConnectPlayer, ManualPlayer, SdkPlayer, isIOS, sdkSupported, type SnippetPlayer } from '../spotify/player';
+import { ConnectPlayer, ManualPlayer, PreviewPlayer, SdkPlayer, defaultPlayerMode, isIOS, sdkSupported, type SnippetPlayer } from '../spotify/player';
 import { isLoggedIn } from '../spotify/auth';
 import { loadGame, loadPlayerMode, loadPreferredDevice, loadSettings, pushHistory, saveGame } from '../storage/store';
 import { playSfx, setPageAudio } from '../audio/sfx';
@@ -162,8 +162,10 @@ export function Host({ authError }: { authError?: string }) {
   // Reproductor recordado: solo el tipo, la instancia se crea con un gesto del usuario.
   useEffect(() => {
     if (player) return;
-    const mode = loadPlayerMode() ?? (sdkSupported() ? 'sdk' : 'connect');
+    const mode = loadPlayerMode() ?? defaultPlayerMode();
     if (mode === 'manual') { const m = new ManualPlayer(); m.onStatus = setPlayerStatus; setPlayerState(m); void m.init(); return; }
+    // Vista previa: no necesita sesión de Spotify; se habilita con el primer toque (Sonar o Activar).
+    if (mode === 'preview') { const v = new PreviewPlayer(); v.onStatus = setPlayerStatus; setPlayerState(v); setPlayerStatus('Vista previa: tocá Sonar o "Activar"'); return; }
     if (!loggedIn) return;
     const p = mode === 'sdk' && sdkSupported() ? new SdkPlayer() : new ConnectPlayer(undefined, loadPreferredDevice());
     p.onStatus = setPlayerStatus;

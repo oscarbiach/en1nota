@@ -237,8 +237,8 @@ export const saveSettings = (s: Settings) => write(K.settings, s);
 export const loadPlayerName = () => read<string>(K.name, '', (v) => typeof v === 'string');
 export const savePlayerName = (n: string) => write(K.name, n);
 
-export type PlayerModeSetting = 'sdk' | 'connect' | 'manual';
-export const loadPlayerMode = () => read<PlayerModeSetting | null>(K.playerMode, null, (v) => v === 'sdk' || v === 'connect' || v === 'manual');
+export type PlayerModeSetting = 'sdk' | 'connect' | 'preview' | 'manual';
+export const loadPlayerMode = () => read<PlayerModeSetting | null>(K.playerMode, null, (v) => v === 'sdk' || v === 'connect' || v === 'preview' || v === 'manual');
 export const savePlayerMode = (m: PlayerModeSetting) => write(K.playerMode, m);
 export const loadConnectDevice = () => read<string | null>(K.connectDevice, null, (v) => typeof v === 'string');
 export const loadConnectDeviceName = () => read<string | null>(K.connectDeviceName, null, (v) => typeof v === 'string');

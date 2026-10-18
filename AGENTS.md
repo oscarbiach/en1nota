@@ -41,7 +41,8 @@
 - Las pruebas de Node usan type stripping: imports con extensión `.ts` y sin parameter properties en clases.
 - `pkill -f` y `pgrep -f` matan al propio shell: guardá el PID al lanzar un proceso.
 - Las pruebas E2E eligen el modo manual con `getByLabel(/Sin reproductor/)`: ese texto de la opción se mantiene.
-- Las playlists de otras personas se leen de la página pública de Spotify (`server/spotify-embed.js`), que no es una vía oficial y puede cambiar.
+- Las playlists de otras personas y las vistas previas de 30 s («Vista previa», el modo para iPhone) se leen de la página pública de Spotify (`server/spotify-embed.js`), que no es una vía oficial y puede cambiar.
+- En iPhone, Spotify Connect hacia el mismo celular no arranca (la app de Spotify en segundo plano); por eso el modo por defecto en iPhone es «Vista previa».
 
 ## Relevo entre sesiones
 - Una rama por tarea y un solo agente escribiendo en ella a la vez.

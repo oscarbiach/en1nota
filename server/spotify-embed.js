@@ -68,3 +68,15 @@ export function parseEmbed(html) {
   for (const blob of jsonBlobs(html)) visit(blob, 0);
   return { name, tracks };
 }
+
+/**
+ * Página embed de UNA canción (open.spotify.com/embed/track/ID) → enlace a su
+ * vista previa de 30 s (MP3 en p.scdn.co), o null. Es lo que el reproductor
+ * embebido de Spotify toca sin cuenta. Se busca el enlace en todo el HTML,
+ * esté escrito tal cual o escapado dentro de JSON (\/ o /).
+ */
+export function parsePreview(html) {
+  const text = String(html).replace(/\\u002[Ff]/g, '/').replace(/\\\//g, '/');
+  const m = /https:\/\/p\.scdn\.co\/mp3-preview\/[A-Za-z0-9]+(?:\?[A-Za-z0-9=&%._-]*)?/.exec(text);
+  return m ? m[0] : null;
+}

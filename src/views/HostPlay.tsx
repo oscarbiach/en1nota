@@ -6,7 +6,7 @@ import { TurnQueue } from '../components/TurnQueue';
 import { SoundWave } from '../components/SoundWave';
 import { usePress } from '../components/press';
 import { JoinRequests, RoomChanged } from '../components/JoinRequests';
-import { ConnectPlayer, ManualPlayer, SdkPlayer, isIOS, sdkSupported } from '../spotify/player';
+import { ConnectPlayer, ManualPlayer, PreviewPlayer, SdkPlayer, defaultPlayerMode, isIOS, sdkSupported } from '../spotify/player';
 import { loadConnectDevice, loadPlayerMode, loadPreferredDevice, saveConnectDevice, savePlayerMode, type PlayerModeSetting } from '../storage/store';
 import { phoneDevices, type Device } from '../spotify/api';
 import { secs, mmss } from '../util/format';
@@ -361,6 +361,7 @@ function Pad({ name, color, hotkey, disabled, onBuzz }: { name: string; color: s
 const MODE_LABEL: Record<PlayerModeSetting, string> = {
   sdk: 'Suena acá',
   connect: 'Spotify Connect',
+  preview: 'Vista previa',
   manual: 'Música manual'
 };
 
@@ -372,7 +373,7 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
   // `mode` es la selección pendiente; el modo activo es siempre `player.mode`.
   // Al recargar, el reproductor real llega después del primer render: cuando
   // llega (o cambia), la selección se alinea con él.
-  const [mode, setMode] = useState<PlayerModeSetting>(() => player?.mode ?? loadPlayerMode() ?? (sdkSupported() ? 'sdk' : 'connect'));
+  const [mode, setMode] = useState<PlayerModeSetting>(() => player?.mode ?? loadPlayerMode() ?? defaultPlayerMode());
   useEffect(() => { if (player) setMode(player.mode); }, [player]);
   // Spotify Connect: en qué aparato suena. Se elige acá mismo, sin volver al lobby.
   const [devs, setDevs] = useState<Device[]>([]);
@@ -394,7 +395,7 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
       // reconectarlo de verdad. setPlayer cierra el anterior.
       const chosen = devs.find((d) => d.id === devId);
       if (mode === 'connect' && chosen) saveConnectDevice(chosen.id, chosen.name);
-      const p = mode === 'manual' ? new ManualPlayer() : mode === 'sdk' ? new SdkPlayer() : new ConnectPlayer(chosen, loadPreferredDevice());
+      const p = mode === 'manual' ? new ManualPlayer() : mode === 'preview' ? new PreviewPlayer() : mode === 'sdk' ? new SdkPlayer() : new ConnectPlayer(chosen, loadPreferredDevice());
       p.onStatus = ctx.setPlayerStatus;
       ctx.setPlayer(p);
       savePlayerMode(mode);
@@ -413,10 +414,11 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
       <div className="row">
         <select aria-label="Reproductor" value={mode} onChange={(e) => setMode(e.target.value as PlayerModeSetting)} className="grow">
           {sdkSupported() && <option value="sdk">Suena en este navegador</option>}
+          <option value="preview">Vista previa en este aparato (30 s)</option>
           <option value="connect">App de Spotify (Connect)</option>
           <option value="manual">Música manual (sin Spotify)</option>
         </select>
-        <button className="btn sm primary" disabled={busy || (mode !== 'manual' && !ctx.loggedIn)} onClick={activate}>
+        <button className="btn sm primary" disabled={busy || (mode !== 'manual' && mode !== 'preview' && !ctx.loggedIn)} onClick={activate}>
           {busy ? '…' : mode === 'connect' && player?.mode === 'connect' && devId && devId !== player.deviceId ? 'Usar este aparato' : player?.ready ? 'Reactivar' : 'Activar'}
         </button>
       </div>
@@ -433,7 +435,7 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
           <p className="muted small mt">Para que suene en este celular: abrí la app de Spotify acá, poné play en cualquier tema, volvé a esta página, tocá Buscar, elegí el celular y tocá «Usar este aparato».</p>
         </>
       )}
-      {mode !== 'manual' && !ctx.loggedIn && <div className="error small mt">Sin sesión de Spotify. Terminá la partida y conectala en el lobby, o usá música manual.</div>}
+      {mode !== 'manual' && mode !== 'preview' && !ctx.loggedIn && <div className="error small mt">Sin sesión de Spotify. Terminá la partida y conectala en el lobby, o usá música manual.</div>}
       {err && <div className="error small mt">{err}</div>}
     </div>
   );

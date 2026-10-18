@@ -4,7 +4,7 @@ import type { Settings, Track } from '../game/types';
 import * as E from '../game/engine';
 import { beginLogin, getClientId, logout, redirectUri, setClientId } from '../spotify/auth';
 import { getMe, phoneDevices, type Device, type Me } from '../spotify/api';
-import { ConnectPlayer, ManualPlayer, SdkPlayer, sdkSupported } from '../spotify/player';
+import { ConnectPlayer, ManualPlayer, PreviewPlayer, SdkPlayer, defaultPlayerMode, isIOS, sdkSupported } from '../spotify/player';
 import { saveConnectDevice, loadConnectDevice, loadPlayerMode, savePlayerMode, saveSettings, type PlayerModeSetting } from '../storage/store';
 import { PlaylistEditor } from './PlaylistEditor';
 import { RoomQr } from '../components/RoomQr';
@@ -15,7 +15,8 @@ import { secs } from '../util/format';
 export function HostSetup({ ctx, setTracks, authError }: { ctx: HostCtx; setTracks: (t: Track[]) => void; authError?: string }) {
   const { game, update, room, online } = ctx;
   const [tab, setTab] = useState<'spotify' | 'jugadores' | 'lista' | 'reglas'>(ctx.loggedIn ? 'jugadores' : 'spotify');
-  const manual = ctx.player?.mode === 'manual';
+  // Música manual y vista previa no necesitan la sesión de Spotify para jugar.
+  const manual = ctx.player?.mode === 'manual' || ctx.player?.mode === 'preview';
   const ready = (ctx.loggedIn || manual) && game.tracks.length > 0 && E.validPlayerCount(game);
   const [startErr, setStartErr] = useState<string>();
   const [starting, setStarting] = useState(false);
@@ -90,7 +91,7 @@ function SpotifyTab({ ctx }: { ctx: HostCtx }) {
   const [clientId, setCid] = useState(getClientId());
   const [me, setMe] = useState<Me | null>(null);
   const [err, setErr] = useState<string>();
-  const [mode, setMode] = useState<PlayerModeSetting>(loadPlayerMode() ?? (sdkSupported() ? 'sdk' : 'connect'));
+  const [mode, setMode] = useState<PlayerModeSetting>(loadPlayerMode() ?? defaultPlayerMode());
   const [devs, setDevs] = useState<Device[]>([]);
   const [devId, setDevId] = useState<string>(loadConnectDevice() ?? '');
   const [busy, setBusy] = useState(false);
@@ -112,6 +113,7 @@ function SpotifyTab({ ctx }: { ctx: HostCtx }) {
       savePlayerMode(mode);
       let p;
       if (mode === 'manual') p = new ManualPlayer();
+      else if (mode === 'preview') p = new PreviewPlayer();
       else if (mode === 'sdk') p = new SdkPlayer();
       else {
         const d = devs.find((x) => x.id === devId);
@@ -171,6 +173,9 @@ function SpotifyTab({ ctx }: { ctx: HostCtx }) {
           <label><input type="radio" checked={mode === 'sdk'} disabled={!sdkSupported()} onChange={() => setMode('sdk')} />
             <b>Suena en este navegador</b>: la música sale por este aparato (la compu o el celu del juez, o el parlante conectado a él). {sdkSupported() ? 'Recomendado: los fragmentos cortos son exactos.' : 'No disponible en iPhone/iPad.'}
           </label>
+          <label><input type="radio" checked={mode === 'preview'} onChange={() => setMode('preview')} />
+            <b>Vista previa en este aparato</b>: suenan los 30 s de muestra que Spotify publica de cada tema, dentro de esta página. {isIOS() ? 'Recomendado en iPhone.' : 'Sirve en cualquier celular.'} El fragmento arranca donde arranca la muestra (no en el punto de inicio de la lista) y algunos temas no tienen muestra.
+          </label>
           <label><input type="radio" checked={mode === 'connect'} onChange={() => setMode('connect')} />
             <b>App de Spotify en el celular (Spotify Connect)</b>: la música sale por la app de Spotify de tu celular y esta página la maneja como control remoto. Para iPhone. Solo se usan celulares: nunca parlantes ni TVs de la cuenta. Los fragmentos de menos de 1 s salen imprecisos.
           </label>
@@ -188,7 +193,7 @@ function SpotifyTab({ ctx }: { ctx: HostCtx }) {
           </div>
         )}
         <div className="row">
-          <button className="btn primary" disabled={(!ctx.loggedIn && mode !== 'manual') || busy} onClick={activate}>{busy ? 'Activando…' : 'Activar reproductor'}</button>
+          <button className="btn primary" disabled={(!ctx.loggedIn && mode !== 'manual' && mode !== 'preview') || busy} onClick={activate}>{busy ? 'Activando…' : 'Activar reproductor'}</button>
           <button className="btn" disabled={!ctx.player?.ready || mode === 'manual'} onClick={test}>Probar 1,5 s</button>
           <label className="row" style={{ margin: 0 }}><input type="checkbox" checked={ctx.localSfx} onChange={(e) => ctx.setLocalSfx(e.target.checked)} />Efectos de sonido acá</label>
         </div>

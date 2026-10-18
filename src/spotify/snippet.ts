@@ -1,7 +1,7 @@
 // Contrato común de los reproductores (SDK, Connect, manual).
 import type { SnippetResult } from './run.ts';
 
-export type PlayerMode = 'sdk' | 'connect' | 'manual';
+export type PlayerMode = 'sdk' | 'connect' | 'preview' | 'manual';
 
 export interface SnippetPlayer {
   readonly mode: PlayerMode;

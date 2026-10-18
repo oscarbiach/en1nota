@@ -63,6 +63,11 @@ Dónde suena la música:
 - **En este navegador** (Web Playback SDK): notebook con Chrome / Edge / Firefox
   o Android con Chrome. Es el modo preciso: la pausa es local, así que un
   fragmento de 400 ms dura 400 ms.
+- **Vista previa** (recomendado en iPhone): suenan los 30 s de muestra que
+  Spotify publica de cada tema, dentro de la misma página y con corte exacto.
+  El servidor saca el enlace de la página pública de cada canción
+  (`/api/spotify/preview/:id`), que no es una vía oficial. El fragmento arranca
+  donde arranca la muestra y algunos temas no tienen. No necesita sesión.
 - **Spotify Connect**: la app manda play / pause a la app de Spotify de un
   celular (el iPhone del juez). Por decisión del dueño solo se usan celulares:
   parlantes, compus y TVs de la cuenta no se listan. Es la única opción en iPhone. Cada comando viaja por internet, así que fragmentos de menos de ~1 s

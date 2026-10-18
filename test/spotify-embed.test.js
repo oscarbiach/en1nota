@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
-import { parseEmbed } from '../server/spotify-embed.js';
+import { parseEmbed, parsePreview } from '../server/spotify-embed.js';
 
 const id = (c) => c.repeat(22);
 const PL = id('P');
@@ -60,6 +60,8 @@ async function withServers(fn) {
     upstreamHits++;
     if (req.url === `/embed/playlist/${PL}`) { res.writeHead(200, { 'content-type': 'text/html' }); res.end(nextDataPage()); return; }
     if (req.url === `/embed/playlist/${id('V')}`) { res.writeHead(200, { 'content-type': 'text/html' }); res.end('<html></html>'); return; }
+    if (req.url === `/embed/track/${id('T')}`) { res.writeHead(200, { 'content-type': 'text/html' }); res.end(`<script id="__NEXT_DATA__" type="application/json">{"audioPreview":{"url":"https:\\/\\/p.scdn.co\\/mp3-preview\\/abc123"}}</script>`); return; }
+    if (req.url === `/embed/track/${id('N')}`) { res.writeHead(200, { 'content-type': 'text/html' }); res.end('<html>sin vista previa</html>'); return; }
     res.writeHead(404); res.end();
   });
   await new Promise((r) => upstream.listen(0, '127.0.0.1', r));
@@ -96,5 +98,27 @@ test('GET /api/spotify/playlist/:id valida el id y explica los fallos', async ()
     const empty = await fetch(`${base}/api/spotify/playlist/${id('V')}`);
     assert.equal(empty.status, 404);
     assert.equal((await empty.json()).error, 'sin_canciones');
+  });
+});
+
+test('vista previa: encuentra el MP3 escrito tal cual o escapado dentro del JSON', () => {
+  assert.equal(parsePreview('<a href="https://p.scdn.co/mp3-preview/abc123?cid=x">'), 'https://p.scdn.co/mp3-preview/abc123?cid=x');
+  assert.equal(parsePreview('{"url":"https:\\/\\/p.scdn.co\\/mp3-preview\\/abc123"}'), 'https://p.scdn.co/mp3-preview/abc123');
+  assert.equal(parsePreview('{"url":"https:\\u002F\\u002Fp.scdn.co\\u002Fmp3-preview\\u002Fabc123"}'), 'https://p.scdn.co/mp3-preview/abc123');
+  assert.equal(parsePreview('<html>nada</html>'), null);
+});
+
+test('GET /api/spotify/preview/:id devuelve el MP3, explica si no hay y valida el id', async () => {
+  await withServers(async ({ base, hits }) => {
+    const ok = await fetch(`${base}/api/spotify/preview/${id('T')}`);
+    assert.equal(ok.status, 200);
+    assert.equal((await ok.json()).url, 'https://p.scdn.co/mp3-preview/abc123');
+    const before = hits();
+    await fetch(`${base}/api/spotify/preview/${id('T')}`);
+    assert.equal(hits(), before, 'la segunda vez sale de la caché');
+    const none = await fetch(`${base}/api/spotify/preview/${id('N')}`);
+    assert.equal(none.status, 404);
+    assert.equal((await none.json()).error, 'sin_vista_previa');
+    assert.equal((await fetch(`${base}/api/spotify/preview/no-valido`)).status, 400);
   });
 });

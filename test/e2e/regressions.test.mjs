@@ -722,3 +722,46 @@ test('iPhone con Spotify Connect: la página no abre audio propio (le cortaría 
   assert.equal(await page.evaluate(() => window.__audioOpened), 0, 'ni el inicio, ni el toque, ni el acierto abrieron audio en la página');
   await ctx.close();
 });
+
+test('iPhone con «Vista previa»: el fragmento suena en la página y se corta solo, sin sesión de Spotify', async () => {
+  // 2 s de silencio en WAV: hace de MP3 de muestra (el navegador de pruebas no sale a internet).
+  const n = 16000;
+  const wav = Buffer.alloc(44 + n, 128);
+  wav.write('RIFF', 0); wav.writeUInt32LE(36 + n, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(8000, 28);
+  wav.writeUInt16LE(1, 32); wav.writeUInt16LE(8, 34); wav.write('data', 36); wav.writeUInt32LE(n, 40);
+  const previewUrl = `data:audio/wav;base64,${wav.toString('base64')}`;
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
+  await ctx.addInitScript(() => {
+    window.__media = [];
+    const play = HTMLMediaElement.prototype.play;
+    const pause = HTMLMediaElement.prototype.pause;
+    HTMLMediaElement.prototype.play = function () { window.__media.push({ k: this.src.startsWith('data:audio/wav;base64,UklGR') && this.src.length > 20000 ? 'muestra' : 'silencio', t: performance.now() }); return play.call(this); };
+    HTMLMediaElement.prototype.pause = function () { window.__media.push({ k: 'pausa', t: performance.now() }); return pause.call(this); };
+  });
+  const asked = [];
+  await ctx.route('**/api/spotify/preview/**', (route) => { asked.push(route.request().url()); return route.fulfill({ json: { url: previewUrl } }); });
+  const page = await ctx.newPage();
+  const id = 'b'.repeat(22);
+  await page.goto(BASE);
+  await page.evaluate((id) => {
+    localStorage.setItem('en1nota.playerMode', JSON.stringify('preview'));
+    localStorage.setItem('en1nota.playlists', JSON.stringify([{ id: 'p1', name: 'De Spotify', updatedAt: 1,
+      tracks: [{ id, uri: `spotify:track:${id}`, name: 'Tema Uno', artists: 'Banda', album: '', durationMs: 180000, startMs: 60000 }] }]));
+  }, id);
+  await page.goto(`${BASE}/#/juez`);
+  await addTablePlayers(page, ['Ana']);
+  await page.getByText(/3 · Canciones/).click();
+  await page.getByRole('button', { name: 'Cargar' }).click();
+  await start(page);
+  await sonar(page).click();
+  await until(async () => (await page.evaluate(() => window.__media)).some((m) => m.k === 'muestra'), 'sonó la muestra', 5000);
+  await until(async () => (await phaseLabel(page)) !== 'Sonando…', 'el fragmento terminó solo', 5000);
+  const media = await page.evaluate(() => window.__media);
+  const start0 = media.find((m) => m.k === 'muestra');
+  const stop = media.find((m) => m.k === 'pausa' && m.t > start0.t);
+  assert.ok(stop && stop.t - start0.t >= 350 && stop.t - start0.t < 1500, `se cortó a los ${stop && Math.round(stop.t - start0.t)} ms`);
+  assert.ok(asked.some((u) => u.endsWith(`/api/spotify/preview/${id}`)), 'pidió la muestra de ese tema');
+  await ctx.close();
+});
