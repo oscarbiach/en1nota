@@ -86,3 +86,9 @@ test('la playlist pública que manda el servidor se revisa: ítems mal formados 
   const r = await publicPlaylist('pqrstuvwxyzABCDEFGHIJK');
   assert.deepEqual(r.map((t) => [t.name, t.artists, t.durationMs]), [['Buena', 'Banda', 1000], ['Buena', '', 0]]);
 });
+
+test('Spotify contesta play/pausa con un texto suelto (no JSON): no es un error', async () => {
+  // Caso real (2026-10-18, iPhone): "JSON Parse error: Unexpected identifier giboo9OWU2Flwq7oGo5mGqqQMf0".
+  g.fetch = async () => new Response('giboo9OWU2Flwq7oGo5mGqqQMf0', { status: 200, headers: { 'content-type': 'text/plain' } });
+  assert.equal(await api('/me/player/play', { method: 'PUT' }), undefined);
+});

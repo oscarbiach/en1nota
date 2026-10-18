@@ -54,7 +54,10 @@ export async function api<T = unknown>(path: string, init: RequestInit = {}, ret
   }
   if (res.status === 204 || res.headers.get('content-length') === '0') return undefined as T;
   const text = await res.text();
-  return (text ? JSON.parse(text) : undefined) as T;
+  if (!text) return undefined as T;
+  // Las órdenes del reproductor (play, pausa) a veces vuelven con un texto
+  // suelto en vez de JSON: la orden salió bien, no hay nada que leer.
+  try { return JSON.parse(text) as T; } catch { return undefined as T; }
 }
 
 interface ApiTrack {
