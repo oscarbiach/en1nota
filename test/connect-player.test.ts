@@ -91,9 +91,12 @@ test('si Spotify pierde el aparato en plena partida, vuelve al mismo (por nombre
 test('fragmento por Connect: se cuenta desde que el aparato suena; la pausa nunca llega antes', async () => {
   startsAfterPolls = 3; // el celular tarda en arrancar
   const p = new ConnectPlayer(phone);
+  const status: string[] = [];
+  p.onStatus = (m) => status.push(m);
   await p.init();
   const r = await run(p.playSnippet('spotify:track:x', 10_000, 400));
   assert.equal(r.value, 'done', String(r.error?.message));
+  assert.match(status.at(-1) ?? '', /Spotify confirmó el último fragmento/, 'el juez ve qué dijo Spotify');
   assert.deepEqual(log, ['play', 'estado:no', 'estado:no', 'estado:no', 'estado:si', 'pausa']);
 });
 

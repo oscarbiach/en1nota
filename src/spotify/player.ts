@@ -336,6 +336,8 @@ export class ConnectPlayer implements SnippetPlayer {
           + 'Si es este iPhone: Spotify se duerme cuando queda en pausa en segundo plano. Abrí la app de Spotify, dejá un tema sonando, volvé y tocá Sonar. '
           + 'Más firme: elegí un parlante (Echo, compu) en «Reproductor y conexión».');
       }
+      // Visible en «Reproductor y conexión»: sirve para saber qué dice Spotify cuando no se oye nada.
+      this.onStatus?.(`Suena en: ${this.device?.name} · Spotify confirmó el último fragmento (${new Date().toLocaleTimeString('es-AR')})`);
       const elapsed = Math.max(0, s.progressMs - startMs);
       // Suponemos que el pause tarda parecido al play: lo mandamos antes.
       await op.sleep(Math.max(0, lenMs - elapsed - this.lastPlayLatency * 0.5));
