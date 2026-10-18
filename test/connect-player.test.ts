@@ -15,6 +15,8 @@ const phone = { id: 'iphone', name: 'iPhone de Oscar', type: 'Smartphone', is_ac
 const juan = { id: 'juan', name: 'iPhone de Juan', type: 'Smartphone', is_active: true };
 let list = [echo, phone];
 let missing = new Set<string>();
+/** Si está, Spotify contesta 404 con este mensaje a cualquier play (p. ej. el tema no existe). */
+let notFoundMessage: string | undefined;
 const plays: string[] = [];
 /** Orden de los pedidos: 'play', 'estado:si'/'estado:no', 'pausa'. */
 const log: string[] = [];
@@ -28,6 +30,7 @@ g.fetch = async (url: string, init: RequestInit = {}) => {
   if (u.pathname.endsWith('/me/player/devices')) return new Response(JSON.stringify({ devices: list }), { status: 200 });
   if (u.pathname.endsWith('/me/player/play')) {
     const id = u.searchParams.get('device_id') ?? '';
+    if (notFoundMessage) return new Response(JSON.stringify({ error: { status: 404, message: notFoundMessage } }), { status: 404 });
     if (missing.has(id)) return new Response(JSON.stringify({ error: { status: 404, message: 'Device not found' } }), { status: 404 });
     plays.push(id);
     log.push('play');
@@ -54,7 +57,7 @@ async function run<T>(p: Promise<T>) {
 const { ConnectPlayer } = await import('../src/spotify/player.ts');
 
 beforeEach(() => {
-  list = [echo, phone]; missing = new Set(); plays.length = 0; log.length = 0; startsAfterPolls = 0; last = undefined;
+  list = [echo, phone]; missing = new Set(); notFoundMessage = undefined; plays.length = 0; log.length = 0; startsAfterPolls = 0; last = undefined;
   mock.timers.reset();
   mock.timers.enable({ apis: ['setTimeout'] });
 });
@@ -115,4 +118,21 @@ test('si el aparato no arranca (iPhone con Spotify dormido), avisa qué hacer en
   const r = await run(p.playSnippet('spotify:track:x', 0, 400));
   assert.match(r.error?.message ?? '', /no empezó a sonar.*dejá un tema sonando/s);
   assert.equal(log.at(-1), 'pausa', 'por si arranca tarde, igual se pausa');
+});
+
+test('caso real: Spotify dice «Device not found» con el iPhone listado y activo: se manda al activo sin id', async () => {
+  const active = { ...phone, is_active: true };
+  list = [echo, active];
+  missing.add('iphone');
+  const p = new ConnectPlayer(active);
+  await p.init();
+  await p.play('spotify:track:x', 0);
+  assert.deepEqual(plays, [''], 'segundo intento sin device_id: va al aparato activo de la cuenta');
+});
+
+test('un 404 que no es del celular (p. ej. el tema) muestra lo que dijo Spotify, no «no encuentra tu celular»', async () => {
+  notFoundMessage = 'Not found.';
+  const p = new ConnectPlayer(phone);
+  await p.init();
+  await assert.rejects(p.play('spotify:track:x', 0), (e: Error) => /Spotify dijo: Not found\./.test(e.message) && !/no encuentra tu celular/.test(e.message));
 });

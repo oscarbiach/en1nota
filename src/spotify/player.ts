@@ -20,7 +20,10 @@ const CONFIRM_MS = 2000;
 const CONNECT_CONFIRM_EVERY_MS = 400;
 const CONNECT_CONFIRM_TRIES = 13;
 
-const isDeviceNotFound = (e: unknown) => e instanceof SpotifyError && e.status === 404;
+/** Sólo el 404 que habla del aparato: otro 404 (un tema que no existe) es otro problema. */
+const isDeviceNotFound = (e: unknown) => e instanceof SpotifyError && e.status === 404 && /device/i.test(e.message);
+/** Lo que dijo Spotify, para mostrarlo tal cual junto a nuestra explicación. */
+const said = (e: unknown) => (e instanceof Error && e.message ? ` (Spotify dijo: ${e.message})` : '');
 
 /**
  * Espera `p` como máximo `ms`. El SDK de Spotify puede no contestar nunca
@@ -284,18 +287,44 @@ export class ConnectPlayer implements SnippetPlayer {
    * o el de mismo nombre, o el primero, y reintenta una vez.
    */
   private async startPlayback(uri: string, startMs: number, op: Op) {
+    const fail = (e: unknown): never => {
+      if (e instanceof SpotifyError && !isDeviceNotFound(e)) {
+        throw new Error(`Spotify no pudo poner este tema${said(e)}. Probá con el siguiente o revisá que la canción siga disponible en Spotify.`);
+      }
+      throw e;
+    };
+    let first: unknown;
     try {
       await op.wait(playUri(this.deviceId, uri, startMs));
+      return;
     } catch (e) {
-      if (!isDeviceNotFound(e)) throw e;
-      const ds = await op.wait(phoneDevices());
-      // El mismo aparato con otro id antes que el activo: no saltar a otro parlante.
-      const d = pickDevice(ds.filter((x) => x.id !== this.deviceId), { name: this.device?.name ?? this.preferred?.name });
-      if (!d) throw new Error('Spotify no encuentra tu celular (Device not found). Abrí la app de Spotify en el iPhone, poné play un segundo y tocá "Reactivar".');
-      this.setDevice(d);
-      this.onStatus?.(`Suena en: ${d.name}`);
-      await op.wait(playUri(this.deviceId, uri, startMs));
+      if (!isDeviceNotFound(e)) fail(e);
+      first = e;
     }
+    const ds = await op.wait(phoneDevices());
+    // El mismo celular con otro id (Spotify a veces lo cambia).
+    const name = this.device?.name ?? this.preferred?.name;
+    const renamed = name ? ds.find((x) => x.id !== this.deviceId && x.name === name) : undefined;
+    if (renamed) {
+      this.setDevice(renamed);
+      this.onStatus?.(`Suena en: ${renamed.name}`);
+      try { await op.wait(playUri(this.deviceId, uri, startMs)); return; } catch (e) { if (!isDeviceNotFound(e)) fail(e); }
+    }
+    // Caso real (iPhone, 2026-10-18): el celular está listado y activo pero
+    // Spotify no lo encuentra por su id. Sin device_id, la orden va al aparato
+    // activo de la cuenta, que es ese mismo celular.
+    const active = ds.find((x) => x.is_active);
+    if (active) {
+      this.setDevice(active);
+      this.onStatus?.(`Suena en: ${active.name}`);
+      try {
+        await op.wait(playUri(undefined, uri, startMs));
+        return;
+      } catch (e) {
+        if (!isDeviceNotFound(e)) fail(e);
+      }
+    }
+    throw new Error(`Spotify no encuentra tu celular${said(first)}. Abrí la app de Spotify en el iPhone, dejá un tema sonando, volvé y tocá Sonar.`);
   }
 
   async play(uri: string, startMs: number, maxMs?: number) {
