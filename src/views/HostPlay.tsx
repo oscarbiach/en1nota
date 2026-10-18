@@ -7,7 +7,8 @@ import { SoundWave } from '../components/SoundWave';
 import { usePress } from '../components/press';
 import { JoinRequests, RoomChanged } from '../components/JoinRequests';
 import { ConnectPlayer, ManualPlayer, SdkPlayer, sdkSupported } from '../spotify/player';
-import { loadPlayerMode, savePlayerMode, type PlayerModeSetting } from '../storage/store';
+import { loadConnectDevice, loadPlayerMode, loadPreferredDevice, saveConnectDevice, savePlayerMode, type PlayerModeSetting } from '../storage/store';
+import { devices, type Device } from '../spotify/api';
 import { secs, mmss } from '../util/format';
 import { navigate } from '../router';
 
@@ -134,7 +135,7 @@ export function HostPlay({ ctx }: { ctx: HostCtx }) {
         </div>
         <div className="row">
           <span className={`pill ${online ? 'on' : 'off'}`}>{room ? `Sala ${room}` : 'sin sala'}</span>
-          <span className={`pill ${player?.ready ? 'on' : 'off'}`}>{player?.ready ? MODE_LABEL[player.mode] : 'Sin reproductor'}</span>
+          <span className={`pill ${player?.ready ? 'on' : 'off'}`}>{player?.ready ? (player.deviceName ? `Suena en: ${player.deviceName}` : MODE_LABEL[player.mode]) : 'Sin reproductor'}</span>
           {!selfJudge && <label className="row small" style={{ margin: 0 }}><input type="checkbox" checked={mesa} onChange={(e) => setMesa(e.target.checked)} />Modo mesa</label>}
         </div>
       </div>
@@ -373,6 +374,17 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
   // llega (o cambia), la selección se alinea con él.
   const [mode, setMode] = useState<PlayerModeSetting>(() => player?.mode ?? loadPlayerMode() ?? (sdkSupported() ? 'sdk' : 'connect'));
   useEffect(() => { if (player) setMode(player.mode); }, [player]);
+  // Spotify Connect: en qué aparato suena. Se elige acá mismo, sin volver al lobby.
+  const [devs, setDevs] = useState<Device[]>([]);
+  const [devId, setDevId] = useState<string>(() => player?.deviceId ?? loadConnectDevice() ?? '');
+  const loadDevs = async () => {
+    try {
+      const ds = await devices();
+      setDevs(ds);
+      setDevId((cur) => (ds.some((d) => d.id === cur) ? cur : player?.deviceId ?? ds.find((d) => d.name === loadPreferredDevice().name)?.id ?? ds.find((d) => d.is_active)?.id ?? ds[0]?.id ?? ''));
+    } catch (e) { setErr((e as Error).message); }
+  };
+  useEffect(() => { if (mode === 'connect' && ctx.loggedIn) void loadDevs(); }, [mode, ctx.loggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const activate = async () => {
     setErr(undefined); setBusy(true);
@@ -380,7 +392,9 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
       // Siempre uno nuevo: "Reactivar" sobre un reproductor que figura listo
       // pero ya no responde (desconectado, otro dispositivo) tiene que
       // reconectarlo de verdad. setPlayer cierra el anterior.
-      const p = mode === 'manual' ? new ManualPlayer() : mode === 'sdk' ? new SdkPlayer() : new ConnectPlayer();
+      const chosen = devs.find((d) => d.id === devId);
+      if (mode === 'connect' && chosen) saveConnectDevice(chosen.id, chosen.name);
+      const p = mode === 'manual' ? new ManualPlayer() : mode === 'sdk' ? new SdkPlayer() : new ConnectPlayer(chosen, loadPreferredDevice());
       p.onStatus = ctx.setPlayerStatus;
       ctx.setPlayer(p);
       savePlayerMode(mode);
@@ -402,8 +416,22 @@ function PlayerQuick({ ctx }: { ctx: HostCtx }) {
           <option value="connect">App de Spotify (Connect)</option>
           <option value="manual">Música manual (sin Spotify)</option>
         </select>
-        <button className="btn sm primary" disabled={busy || (mode !== 'manual' && !ctx.loggedIn)} onClick={activate}>{busy ? '…' : player?.ready ? 'Reactivar' : 'Activar'}</button>
+        <button className="btn sm primary" disabled={busy || (mode !== 'manual' && !ctx.loggedIn)} onClick={activate}>
+          {busy ? '…' : mode === 'connect' && player?.mode === 'connect' && devId && devId !== player.deviceId ? 'Usar este aparato' : player?.ready ? 'Reactivar' : 'Activar'}
+        </button>
       </div>
+      {mode === 'connect' && ctx.loggedIn && (
+        <>
+          <div className="row mt">
+            <select aria-label="Aparato de Spotify" value={devId} onChange={(e) => setDevId(e.target.value)} className="grow">
+              {devs.length === 0 && <option value="">Abrí Spotify en algún aparato y tocá Buscar</option>}
+              {devs.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.type}){d.is_active ? ' · activo' : ''}</option>)}
+            </select>
+            <button className="btn sm" onClick={() => void loadDevs()}>Buscar</button>
+          </div>
+          <p className="muted small mt">Para que suene en este celular: abrí la app de Spotify acá, poné play en cualquier tema, volvé a esta página, tocá Buscar, elegí el celular y tocá «Usar este aparato».</p>
+        </>
+      )}
       {mode !== 'manual' && !ctx.loggedIn && <div className="error small mt">Sin sesión de Spotify. Terminá la partida y conectala en el lobby, o usá música manual.</div>}
       {err && <div className="error small mt">{err}</div>}
     </div>

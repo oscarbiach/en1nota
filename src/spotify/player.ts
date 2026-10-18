@@ -217,6 +217,20 @@ export class SdkPlayer implements SnippetPlayer {
   }
 }
 
+/** Aparato que eligió el juez (guardado): por id, o por nombre si Spotify le cambió el id. */
+export interface PreferredDevice { id?: string | null; name?: string | null }
+
+/**
+ * Elige el aparato: primero el que eligió el juez, después el activo, después
+ * el primero. Sin esto la música iba al que Spotify tuviera activo (un
+ * parlante de la casa) en vez del celular del juez.
+ */
+export function pickDevice(ds: Device[], preferred?: PreferredDevice): Device | undefined {
+  return (preferred?.id ? ds.find((x) => x.id === preferred.id) : undefined)
+    ?? (preferred?.name ? ds.find((x) => x.name === preferred.name) : undefined)
+    ?? ds.find((x) => x.is_active) ?? ds[0];
+}
+
 export class ConnectPlayer implements SnippetPlayer {
   readonly mode = 'connect';
   ready = false;
@@ -226,10 +240,17 @@ export class ConnectPlayer implements SnippetPlayer {
   /** Latencia medida del comando play, para descontarla del pause. */
   private lastPlayLatency = 250;
   private device?: Device;
+  private preferred?: PreferredDevice;
 
-  constructor(device?: Device) {
+  constructor(device?: Device, preferred?: PreferredDevice) {
     this.device = device;
     this.deviceId = device?.id;
+    this.preferred = device ? { id: device.id, name: device.name } : preferred;
+  }
+
+  /** Nombre del aparato donde suena, para mostrarlo en pantalla. */
+  get deviceName() {
+    return this.device?.name;
   }
 
   async listDevices() {
@@ -243,13 +264,12 @@ export class ConnectPlayer implements SnippetPlayer {
 
   async init() {
     if (!this.deviceId) {
-      const ds = await devices();
-      const d = ds.find((x) => x.is_active) ?? ds[0];
+      const d = pickDevice(await devices(), this.preferred);
       if (!d) throw new Error('Abrí la app de Spotify en algún dispositivo y volvé a intentar.');
       this.setDevice(d);
     }
     this.ready = true;
-    this.onStatus?.(`Controlando: ${this.device?.name}`);
+    this.onStatus?.(`Suena en: ${this.device?.name}`);
   }
 
   /**
@@ -263,10 +283,11 @@ export class ConnectPlayer implements SnippetPlayer {
     } catch (e) {
       if (!isDeviceNotFound(e)) throw e;
       const ds = await op.wait(devices());
-      const d = ds.find((x) => x.is_active) ?? ds.find((x) => x.name === this.device?.name) ?? ds[0];
+      // El mismo aparato con otro id antes que el activo: no saltar a otro parlante.
+      const d = pickDevice(ds.filter((x) => x.id !== this.deviceId), { name: this.device?.name ?? this.preferred?.name });
       if (!d) throw new Error('Spotify no encuentra ningún dispositivo (Device not found). Abrí la app de Spotify en el celular o la compu y tocá "Reactivar".');
       this.setDevice(d);
-      this.onStatus?.(`Controlando: ${d.name}`);
+      this.onStatus?.(`Suena en: ${d.name}`);
       await op.wait(playUri(this.deviceId, uri, startMs));
     }
   }

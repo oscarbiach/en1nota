@@ -539,15 +539,15 @@ test('B04: con el almacenamiento lleno se avisa y se puede descargar un respaldo
 // ---------- Pedidos del dueño ----------
 
 /** Juez con Spotify Connect simulado: las llamadas a api.spotify.com se registran y responden acá. */
-async function judgeWithFakeSpotify({ hang } = {}) {
+async function judgeWithFakeSpotify({ hang, devices = [{ id: 'fake', name: 'Parlante', type: 'Speaker', is_active: true }] } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
   const calls = [];
   await ctx.route('https://api.spotify.com/**', async (route) => {
     const req = route.request();
     const path = new URL(req.url()).pathname.replace('/v1', '');
-    calls.push({ method: req.method(), path, body: req.postData() ? JSON.parse(req.postData()) : null });
+    calls.push({ method: req.method(), path, device: new URL(req.url()).searchParams.get('device_id'), body: req.postData() ? JSON.parse(req.postData()) : null });
     if (hang?.(path)) return; // Spotify no contesta: el pedido queda abierto
-    if (path === '/me/player/devices') return route.fulfill({ json: { devices: [{ id: 'fake', name: 'Parlante', type: 'Speaker', is_active: true }] } });
+    if (path === '/me/player/devices') return route.fulfill({ json: { devices } });
     if (path === '/me') return route.fulfill({ json: { id: 'x', display_name: 'Prueba', product: 'premium' } });
     return route.fulfill({ status: 204 });
   });
@@ -651,5 +651,31 @@ test('con la app ya instalada (service worker activo), /healthz sigue mostrando 
   await page.goto(`${BASE}/healthz`);
   const body = await page.textContent('body');
   assert.match(body, /"ok":\s*true/, `se esperaba el JSON de estado y llegó: ${body.slice(0, 80)}`);
+  await ctx.close();
+});
+
+test('Spotify Connect: suena en el aparato que elige el juez, no en el parlante activo, y lo recuerda al recargar', async () => {
+  const devices = [
+    { id: 'echo', name: 'Echo Pop de Oscar', type: 'Speaker', is_active: true },
+    { id: 'iphone', name: 'iPhone de Oscar', type: 'Smartphone', is_active: false }
+  ];
+  const { ctx, page, calls } = await judgeWithFakeSpotify({ devices });
+  await addTablePlayers(page, ['Ana']);
+  await addTracks(page, ['Tema Uno', 'Tema Dos']);
+  await start(page);
+  const picker = page.getByLabel('Aparato de Spotify');
+  await until(async () => (await picker.locator('option').count()) === 2, 'lista los aparatos');
+  await picker.selectOption('iphone');
+  await page.getByRole('button', { name: 'Usar este aparato' }).click();
+  await page.getByText('Suena en: iPhone de Oscar').first().waitFor();
+  await sonar(page).click();
+  await until(() => calls.some((c) => c.path === '/me/player/play'), 'mandó a reproducir');
+  assert.deepEqual([...new Set(calls.filter((c) => c.path === '/me/player/play').map((c) => c.device))], ['iphone']);
+  // Al recargar, la app recuerda el aparato elegido aunque Spotify siga marcando el Echo como activo.
+  await page.reload();
+  const before = calls.length;
+  await sonar(page).click();
+  await until(() => calls.slice(before).some((c) => c.path === '/me/player/play'), 'vuelve a reproducir tras recargar');
+  assert.deepEqual([...new Set(calls.slice(before).filter((c) => c.path === '/me/player/play').map((c) => c.device))], ['iphone']);
   await ctx.close();
 });

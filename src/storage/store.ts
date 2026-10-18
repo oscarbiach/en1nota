@@ -16,7 +16,8 @@ const K = {
   settings: 'en1nota.settings',
   name: 'en1nota.playerName',
   playerMode: 'en1nota.playerMode',
-  connectDevice: 'en1nota.connectDevice'
+  connectDevice: 'en1nota.connectDevice',
+  connectDeviceName: 'en1nota.connectDeviceName'
 } as const;
 const QUARANTINE = 'en1nota.quarantine.';
 /** Nunca van en un respaldo: credenciales de Spotify. */
@@ -49,7 +50,8 @@ const LABEL: Record<string, string> = {
   [K.settings]: 'las reglas',
   [K.name]: 'tu nombre',
   [K.playerMode]: 'el reproductor elegido',
-  [K.connectDevice]: 'el dispositivo de Spotify'
+  [K.connectDevice]: 'el dispositivo de Spotify',
+  [K.connectDeviceName]: 'el nombre del dispositivo de Spotify'
 };
 
 function isQuota(e: unknown) {
@@ -239,7 +241,10 @@ export type PlayerModeSetting = 'sdk' | 'connect' | 'manual';
 export const loadPlayerMode = () => read<PlayerModeSetting | null>(K.playerMode, null, (v) => v === 'sdk' || v === 'connect' || v === 'manual');
 export const savePlayerMode = (m: PlayerModeSetting) => write(K.playerMode, m);
 export const loadConnectDevice = () => read<string | null>(K.connectDevice, null, (v) => typeof v === 'string');
-export const saveConnectDevice = (id: string) => write(K.connectDevice, id);
+export const loadConnectDeviceName = () => read<string | null>(K.connectDeviceName, null, (v) => typeof v === 'string');
+/** El aparato de Spotify Connect que eligió el juez: id y nombre (Spotify a veces cambia el id). */
+export const saveConnectDevice = (id: string, name?: string) => { const ok = write(K.connectDevice, id); if (name) write(K.connectDeviceName, name); return ok; };
+export const loadPreferredDevice = () => ({ id: loadConnectDevice(), name: loadConnectDeviceName() });
 
 // ---------- respaldo y espacio ----------
 

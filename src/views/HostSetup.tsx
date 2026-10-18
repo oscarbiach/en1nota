@@ -115,7 +115,7 @@ function SpotifyTab({ ctx }: { ctx: HostCtx }) {
       else if (mode === 'sdk') p = new SdkPlayer();
       else {
         const d = devs.find((x) => x.id === devId);
-        if (d) saveConnectDevice(d.id);
+        if (d) saveConnectDevice(d.id, d.name);
         p = new ConnectPlayer(d);
       }
       p.onStatus = ctx.setPlayerStatus;

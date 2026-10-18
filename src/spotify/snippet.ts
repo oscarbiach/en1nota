@@ -7,6 +7,8 @@ export interface SnippetPlayer {
   readonly mode: PlayerMode;
   readonly ready: boolean;
   readonly deviceId?: string;
+  /** Spotify Connect: nombre del aparato donde suena. */
+  readonly deviceName?: string;
   /** Hay que llamarlo desde un gesto del usuario (click/tap). */
   init(): Promise<void>;
   /**

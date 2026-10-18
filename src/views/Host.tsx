@@ -6,7 +6,7 @@ import { HostConnection } from '../net/host';
 import type { PeerInfo, SfxName } from '../net/protocol';
 import { ConnectPlayer, ManualPlayer, SdkPlayer, sdkSupported, type SnippetPlayer } from '../spotify/player';
 import { isLoggedIn } from '../spotify/auth';
-import { loadGame, loadPlayerMode, loadSettings, pushHistory, saveGame } from '../storage/store';
+import { loadGame, loadPlayerMode, loadPreferredDevice, loadSettings, pushHistory, saveGame } from '../storage/store';
 import { playSfx } from '../audio/sfx';
 import { HostSetup } from './HostSetup';
 import { HostPlay } from './HostPlay';
@@ -165,7 +165,7 @@ export function Host({ authError }: { authError?: string }) {
     const mode = loadPlayerMode() ?? (sdkSupported() ? 'sdk' : 'connect');
     if (mode === 'manual') { const m = new ManualPlayer(); m.onStatus = setPlayerStatus; setPlayerState(m); void m.init(); return; }
     if (!loggedIn) return;
-    const p = mode === 'sdk' && sdkSupported() ? new SdkPlayer() : new ConnectPlayer();
+    const p = mode === 'sdk' && sdkSupported() ? new SdkPlayer() : new ConnectPlayer(undefined, loadPreferredDevice());
     p.onStatus = setPlayerStatus;
     setPlayerState(p);
     setPlayerStatus(mode === 'sdk' ? 'Tocá "Activar reproductor"' : 'Tocá "Activar reproductor" con Spotify abierto');
