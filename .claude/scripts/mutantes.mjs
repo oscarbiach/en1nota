@@ -25,6 +25,7 @@ const M = [
   ['la pausa del SDK tiene tope', 'src/spotify/player.ts', "try { await withTimeout(this.player?.pause(), 1500, 'pause'); }", 'try { await this.player?.pause(); }'],
   ['Spotify pidiendo esperar mucho no traba', 'src/spotify/api.ts', 'if (retry && wait <= MAX_RETRY_WAIT_MS) {', 'if (retry) {'],
   ['Connect suena en el aparato elegido, no en el activo', 'src/spotify/player.ts', 'return (preferred?.id ? ds.find((x) => x.id === preferred.id) : undefined)', 'return ds.find((x) => x.is_active) ?? (preferred?.id ? ds.find((x) => x.id === preferred.id) : undefined)'],
+  ['Connect espera a que el aparato suene antes de contar', 'src/spotify/player.ts', "if (s?.isPlaying && sameTrack && (!s.deviceId || s.deviceId === this.deviceId)) return s;", "return s ?? { isPlaying: true, progressMs: 0 };"],
   ['la consulta a Spotify tiene tope de tiempo', 'src/spotify/api.ts', 'const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);', 'const timer = setTimeout(() => {}, TIMEOUT_MS);'],
 ];
 const results = [];

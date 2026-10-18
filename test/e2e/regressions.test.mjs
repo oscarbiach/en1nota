@@ -539,15 +539,22 @@ test('B04: con el almacenamiento lleno se avisa y se puede descargar un respaldo
 // ---------- Pedidos del dueño ----------
 
 /** Juez con Spotify Connect simulado: las llamadas a api.spotify.com se registran y responden acá. */
-async function judgeWithFakeSpotify({ hang, devices = [{ id: 'fake', name: 'Parlante', type: 'Speaker', is_active: true }] } = {}) {
+async function judgeWithFakeSpotify({ hang, asleep = false, devices = [{ id: 'fake', name: 'Parlante', type: 'Speaker', is_active: true }] } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
   const calls = [];
+  let playing; // lo último que se mandó a sonar, para contestar "qué está sonando"
   await ctx.route('https://api.spotify.com/**', async (route) => {
     const req = route.request();
     const path = new URL(req.url()).pathname.replace('/v1', '');
     calls.push({ method: req.method(), path, device: new URL(req.url()).searchParams.get('device_id'), body: req.postData() ? JSON.parse(req.postData()) : null });
     if (hang?.(path)) return; // Spotify no contesta: el pedido queda abierto
     if (path === '/me/player/devices') return route.fulfill({ json: { devices } });
+    const body = calls.at(-1).body;
+    if (path === '/me/player/play') playing = { uri: body?.uris?.[0], position: body?.position_ms ?? 0, device: calls.at(-1).device };
+    if (path === '/me/player/pause') playing = undefined;
+    if (path === '/me/player' && req.method() === 'GET') {
+      return playing && !asleep ? route.fulfill({ json: { is_playing: true, progress_ms: playing.position, item: { uri: playing.uri }, device: { id: playing.device } } }) : route.fulfill({ status: 204 });
+    }
     if (path === '/me') return route.fulfill({ json: { id: 'x', display_name: 'Prueba', product: 'premium' } });
     return route.fulfill({ status: 204 });
   });
@@ -677,5 +684,19 @@ test('Spotify Connect: suena en el aparato que elige el juez, no en el parlante 
   await sonar(page).click();
   await until(() => calls.slice(before).some((c) => c.path === '/me/player/play'), 'vuelve a reproducir tras recargar');
   assert.deepEqual([...new Set(calls.slice(before).filter((c) => c.path === '/me/player/play').map((c) => c.device))], ['iphone']);
+  await ctx.close();
+});
+
+test('Spotify Connect con el aparato dormido: el juez ve qué hacer y puede volver a intentar', async () => {
+  const devices = [{ id: 'iphone', name: 'iPhone de Oscar', type: 'Smartphone', is_active: false }];
+  const { ctx, page, calls } = await judgeWithFakeSpotify({ devices, asleep: true });
+  await addTablePlayers(page, ['Ana']);
+  await addTracks(page, ['Tema Uno']);
+  await start(page);
+  await sonar(page).click();
+  await page.getByText(/no empezó a sonar/).waitFor({ timeout: 10_000 });
+  assert.ok(await page.getByText(/dejá un tema sonando/).first().isVisible());
+  await until(async () => !(await sonar(page).isDisabled()), 'Sonar vuelve a estar disponible', 3000);
+  assert.ok(calls.some((c) => c.path === '/me/player/pause'), 'por si arranca tarde, se pausó');
   await ctx.close();
 });

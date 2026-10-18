@@ -9,13 +9,16 @@
 // Todos cumplen el contrato de run.ts: cada operación termina siempre, y una
 // nueva (o stop) cancela la anterior.
 import { getAccessToken } from './auth.ts';
-import { SpotifyError, devices, pauseRemote, playUri, transferTo, type Device } from './api.ts';
+import { SpotifyError, devices, pauseRemote, playUri, playbackState, transferTo, type Device, type PlaybackState } from './api.ts';
 import { Cancelled, Runner, runSnippet, type Op } from './run.ts';
 
 export { ManualPlayer } from './manual.ts';
 
 /** Cuánto esperamos la confirmación del SDK antes de contar el fragmento desde la orden. */
 const CONFIRM_MS = 2000;
+/** Spotify Connect: cada cuánto y cuántas veces preguntamos si ya suena (≈5 s). */
+const CONNECT_CONFIRM_EVERY_MS = 400;
+const CONNECT_CONFIRM_TRIES = 13;
 
 const isDeviceNotFound = (e: unknown) => e instanceof SpotifyError && e.status === 404;
 
@@ -302,14 +305,40 @@ export class ConnectPlayer implements SnippetPlayer {
     });
   }
 
+  /**
+   * Spotify acepta la orden aunque el aparato no la cumpla: en iPhone, la app
+   * de Spotify en pausa y en segundo plano se duerme y no suena nada, sin
+   * error. Preguntamos qué está sonando hasta ver este tema en este aparato.
+   */
+  private async waitRemotePlaying(uri: string, op: Op): Promise<PlaybackState | null> {
+    for (let i = 0; i < CONNECT_CONFIRM_TRIES; i++) {
+      const s = await op.wait(playbackState().catch(() => null));
+      const sameTrack = !!s && (s.uri === uri || s.linkedFromUri === uri);
+      if (s?.isPlaying && sameTrack && (!s.deviceId || s.deviceId === this.deviceId)) return s;
+      await op.sleep(CONNECT_CONFIRM_EVERY_MS);
+    }
+    return null;
+  }
+
   playSnippet(uri: string, startMs: number, lenMs: number) {
     const op = this.runner.begin();
     return runSnippet(async () => {
       const t0 = performance.now();
       await this.startPlayback(uri, startMs, op);
       this.lastPlayLatency = performance.now() - t0;
+      // El fragmento se cuenta desde que el aparato de verdad suena, no desde
+      // la orden: si no, con la demora de Connect un fragmento corto se
+      // pausaba antes de oírse.
+      const s = await this.waitRemotePlaying(uri, op);
+      if (!s) {
+        try { await pauseRemote(this.deviceId); } catch { /* por si arranca tarde */ }
+        throw new Error(`Spotify aceptó la orden pero en «${this.device?.name ?? 'el aparato'}» no empezó a sonar. `
+          + 'Si es este iPhone: Spotify se duerme cuando queda en pausa en segundo plano. Abrí la app de Spotify, dejá un tema sonando, volvé y tocá Sonar. '
+          + 'Más firme: elegí un parlante (Echo, compu) en «Reproductor y conexión».');
+      }
+      const elapsed = Math.max(0, s.progressMs - startMs);
       // Suponemos que el pause tarda parecido al play: lo mandamos antes.
-      await op.sleep(Math.max(0, lenMs - this.lastPlayLatency * 0.5));
+      await op.sleep(Math.max(0, lenMs - elapsed - this.lastPlayLatency * 0.5));
       await pauseRemote(this.deviceId);
     });
   }

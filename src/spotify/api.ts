@@ -250,6 +250,30 @@ export async function devices(): Promise<Device[]> {
   return j.devices;
 }
 
+export interface PlaybackState {
+  isPlaying: boolean;
+  progressMs: number;
+  uri?: string;
+  linkedFromUri?: string;
+  deviceId?: string;
+}
+
+/** Qué está sonando en la cuenta (Spotify Connect). Sin nada sonando, Spotify contesta vacío. */
+export async function playbackState(): Promise<PlaybackState | null> {
+  const j = await api<Record<string, unknown> | undefined>('/me/player');
+  if (!j || typeof j !== 'object') return null;
+  const item = (j.item ?? {}) as Record<string, unknown>;
+  const device = (j.device ?? {}) as Record<string, unknown>;
+  const linked = (item.linked_from ?? {}) as Record<string, unknown>;
+  return {
+    isPlaying: j.is_playing === true,
+    progressMs: typeof j.progress_ms === 'number' ? j.progress_ms : 0,
+    uri: typeof item.uri === 'string' ? item.uri : undefined,
+    linkedFromUri: typeof linked.uri === 'string' ? linked.uri : undefined,
+    deviceId: typeof device.id === 'string' ? device.id : undefined
+  };
+}
+
 export async function transferTo(deviceId: string, play = false) {
   await api('/me/player', { method: 'PUT', body: JSON.stringify({ device_ids: [deviceId], play }) });
 }
